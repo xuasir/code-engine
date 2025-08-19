@@ -17,15 +17,15 @@
     "vue"
   ],
   "sideEffects": false,
-  "bin": {
-    "code-engine": "dist/cli.mjs"
-  },
   "exports": {
     ".": "./dist/index.mjs"
   },
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
+  "bin": {
+    "code-engine": "dist/cli.mjs"
+  },
   "files": [
     "dist"
   ],
@@ -34,5 +34,8 @@
     "dev": "unbuild --stub",
     "prepublishOnly": "nr build",
     "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "cac": "catalog:prod"
   }
 }

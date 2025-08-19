@@ -39,5 +39,9 @@
     "yaml",
     "toml",
     "xml"
-  ]
+  ],
+
+  "pnpmCatalogLens.enabled": true,
+  "pnpmCatalogLens.hover": true,
+  "pnpmCatalogLens.namedCatalogsLabel": true
 }

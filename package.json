@@ -16,6 +16,9 @@
     "prepare": "simple-git-hooks"
   },
   "devDependencies": {
+    "@a-sir/code-engine": "workspace:*",
+    "@a-sir/code-engine-core": "workspace:*",
+    "@a-sir/code-engine-utils": "workspace:*",
     "@antfu/eslint-config": "catalog:cli",
     "@antfu/ni": "catalog:cli",
     "@antfu/utils": "catalog:inlined",
@@ -23,7 +26,6 @@
     "bumpp": "catalog:cli",
     "eslint": "catalog:cli",
     "lint-staged": "catalog:cli",
-    "pkg-placeholder": "workspace:*",
     "simple-git-hooks": "catalog:cli",
     "tsx": "catalog:cli",
     "typescript": "catalog:cli",
