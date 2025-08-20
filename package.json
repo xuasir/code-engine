@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@a-sir/code-engine": "workspace:*",
-    "@a-sir/code-engine-core": "workspace:*",
+    "@a-sir/code-engine-kit": "workspace:*",
     "@a-sir/code-engine-utils": "workspace:*",
     "@antfu/eslint-config": "catalog:cli",
     "@antfu/ni": "catalog:cli",

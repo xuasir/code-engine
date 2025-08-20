@@ -1,0 +1,35 @@
+{
+  "name": "@a-sir/code-engine-schema",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "_description_",
+  "author": "xuasir",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xuasir/code-engine.git"
+  },
+  "bugs": "https://github.com/xuasir/code-engine/issues",
+  "keywords": [
+    "code-engine",
+    "vite",
+    "web",
+    "vue"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "unbuild",
+    "dev": "unbuild --stub",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts"
+  }
+}
