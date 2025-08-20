@@ -6,7 +6,7 @@ packages:
 
 catalogs:
   build:
-    unocss: ^65.5.0
+    unocss: ^66.4.2
     unplugin-vue-components: ^28.1.0
     vite-tsconfig-paths: ^5.1.4
     vitepress: ^2.0.0-alpha.11
@@ -35,6 +35,6 @@ catalogs:
   prod:
     cac: ^6.7.14
   testing:
-    vitest: ^3.0.8
+    vitest: ^3.2.4
   types:
     '@types/node': ^24.3.0
