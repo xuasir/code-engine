@@ -31,5 +31,16 @@
     "dev": "unbuild --stub",
     "prepublishOnly": "nr build",
     "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@a-sir/code-engine-schema": "workspace:*",
+    "c12": "catalog:prod",
+    "consola": "catalog:prod",
+    "defu": "catalog:prod",
+    "exsolve": "catalog:prod",
+    "jiti": "catalog:prod",
+    "pathe": "catalog:prod",
+    "unctx": "catalog:prod",
+    "untyped": "catalog:prod"
   }
 }

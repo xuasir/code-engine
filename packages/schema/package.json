@@ -31,5 +31,9 @@
     "dev": "unbuild --stub",
     "prepublishOnly": "nr build",
     "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "hookable": "catalog:prod",
+    "untyped": "catalog:prod"
   }
 }

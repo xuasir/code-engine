@@ -43,5 +43,7 @@
 
   "pnpmCatalogLens.enabled": true,
   "pnpmCatalogLens.hover": true,
-  "pnpmCatalogLens.namedCatalogsLabel": true
+  "pnpmCatalogLens.namedCatalogsLabel": true,
+  "trae.tab.enableRename": false,
+  "trae.tab.enableAutoImport": false
 }

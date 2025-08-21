@@ -36,6 +36,10 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "cac": "catalog:prod"
+    "@a-sir/code-engine-kit": "workspace:*",
+    "@a-sir/code-engine-schema": "workspace:*",
+    "cac": "catalog:prod",
+    "hookable": "catalog:prod",
+    "pkg-types": "catalog:prod"
   }
 }

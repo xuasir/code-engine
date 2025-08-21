@@ -33,7 +33,17 @@ catalogs:
   inlined:
     '@antfu/utils': ^9.1.0
   prod:
+    c12: ^3.2.0
     cac: ^6.7.14
+    consola: ^3.4.2
+    defu: ^6.1.4
+    exsolve: ^1.0.7
+    hookable: ^5.5.3
+    jiti: ^2.5.1
+    pathe: ^2.0.3
+    pkg-types: ^2.3.0
+    unctx: ^2.4.1
+    untyped: ^2.0.0
   testing:
     vitest: ^3.2.4
   types:
