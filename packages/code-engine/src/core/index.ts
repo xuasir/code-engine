@@ -9,6 +9,30 @@ import { readPackageJSON } from 'pkg-types'
 import { version } from '../../package.json'
 import TestModule from './test'
 
+export interface LoadCodeEngineOptions {
+  command: CodeEngineOptions['_command']
+}
+
+export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeEngine> {
+  // 加载配置文件
+  const options = await loadCodeEngineConfig({ cwd: process.cwd() })
+
+  // 命令
+  options._command = opts.command
+
+  // 注入核心模块
+  options.__internalModules ||= []
+  options.__internalModules.push(TestModule)
+
+  // 创建 codeEngine 实例
+  const codeEngine = createCodeEngine(options)
+
+  // codeEngine ready
+  await codeEngine.ready()
+
+  return codeEngine
+}
+
 function createCodeEngine(options: CodeEngineOptions): CodeEngine {
   // 创建 hook
   const hooks = createHooks<CodeEngineHooks>()
@@ -40,23 +64,6 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
   setCodeEngineCtx(codeEngine)
 
   // 注册 注销事件
-  return codeEngine
-}
-
-export async function loadCodeEngine(): Promise<CodeEngine> {
-  // 加载配置文件
-  const options = await loadCodeEngineConfig({ cwd: process.cwd() })
-
-  // 注入核心模块
-  options.__internalModules ||= []
-  options.__internalModules.push(TestModule)
-
-  // 创建 codeEngine 实例
-  const codeEngine = createCodeEngine(options)
-
-  // codeEngine ready
-  await codeEngine.ready()
-
   return codeEngine
 }
 

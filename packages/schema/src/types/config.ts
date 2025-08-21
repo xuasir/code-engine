@@ -13,6 +13,11 @@ export interface CodeEngineConfig extends ConfigSchema {
 }
 
 export interface CodeEngineOptions extends ConfigSchema {
+  /** 当前命令 */
+  _command?: {
+    name: string
+    args: Record<string, any>
+  }
   /**
    * 代码工程的层
    */

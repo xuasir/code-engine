@@ -9,7 +9,12 @@ const cli = cac('@a-sir/code-engine')
 // })
 
 cli.command('generate', '生成项目').action(() => {
-  loadCodeEngine().catch((err: any) => {
+  loadCodeEngine({
+    command: {
+      name: 'generate',
+      args: {},
+    },
+  }).catch((err: any) => {
     // 处理错误
     console.error(`CodeEngine generate command throw a error: ${err.message}`)
   })
