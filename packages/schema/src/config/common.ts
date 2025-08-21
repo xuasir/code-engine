@@ -8,6 +8,7 @@ export default defineResolvers({
     $resolve: val => typeof val === 'string' ? resolve(val) : process.cwd(),
   },
   modules: [],
+  debug: false,
 
   // internal
   _configFile: undefined,

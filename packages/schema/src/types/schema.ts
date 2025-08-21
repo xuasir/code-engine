@@ -7,6 +7,8 @@ export interface ConfigSchema {
   rootDir: string
   /** 扩展模块 */
   modules: Array<CodeEngineModule | string | [CodeEngineModule, ModuleOptions] | [string, ModuleOptions]>
+  /** debug 模式 */
+  debug: boolean
   /**
    * 配置文件路径
    * @private

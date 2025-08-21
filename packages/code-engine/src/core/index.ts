@@ -7,7 +7,7 @@ import { createVFS, installModules, loadCodeEngineConfig, resolveModules, runWit
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
 import { version } from '../../package.json'
-import TestModule from './test'
+import GenerateModule from './generate/module'
 
 export interface LoadCodeEngineOptions {
   command: CodeEngineOptions['_command']
@@ -22,7 +22,7 @@ export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeE
 
   // 注入核心模块
   options.__internalModules ||= []
-  options.__internalModules.push(TestModule)
+  options.__internalModules.push(GenerateModule)
 
   // 创建 codeEngine 实例
   const codeEngine = createCodeEngine(options)
