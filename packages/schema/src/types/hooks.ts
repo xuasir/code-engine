@@ -56,6 +56,12 @@ export interface CodeEngineHooks {
    * @returns
    */
   'layer:extend': (ce: CodeEngine) => HookResult
+  /**
+   * layer 加载完成
+   * @param ce 代码引擎实例
+   * @returns
+   */
+  'layer:loaded': (ce: CodeEngine) => HookResult
 
   // 连接构建引擎
   /**

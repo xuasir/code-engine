@@ -1,11 +1,7 @@
 import type { SchemaDefinition } from 'untyped'
+import type { CodeEngineLayerDefinition } from './layer'
 import type { CodeEngineModule, ModuleMeta, ModuleOptions, ModuleSetupInstallResult } from './module'
 import type { ConfigSchema } from './schema'
-
-export interface CodeEngineLayer {
-  /** 层工作目录 */
-  cwd: string
-}
 
 export interface CodeEngineConfig extends ConfigSchema {
   /** 配置 */
@@ -21,7 +17,7 @@ export interface CodeEngineOptions extends ConfigSchema {
   /**
    * 代码工程的层
    */
-  _layers: CodeEngineLayer[]
+  _layers: CodeEngineLayerDefinition[]
   /**
    * 内部模块
    */

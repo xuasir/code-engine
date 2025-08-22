@@ -10,8 +10,8 @@ export default defineModule({
   setup(_resolvedOptions, ce) {
     const logger = useLogger('codeEngine:generate')
 
-    if (ce.options._command?.name !== 'generate') {
-      logger.debug('generate command not running')
+    if (ce.options._command?.name !== 'prepare') {
+      logger.debug('prepare command not running')
       return false
     }
 

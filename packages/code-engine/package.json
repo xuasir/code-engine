@@ -24,7 +24,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "code-engine": "dist/cli.mjs"
+    "code-engine": "dist/cli/index.mjs"
   },
   "files": [
     "dist"
@@ -38,7 +38,7 @@
   "dependencies": {
     "@a-sir/code-engine-kit": "workspace:*",
     "@a-sir/code-engine-schema": "workspace:*",
-    "cac": "catalog:prod",
+    "citty": "catalog:prod",
     "hookable": "catalog:prod",
     "pkg-types": "catalog:prod"
   }

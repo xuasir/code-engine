@@ -34,7 +34,7 @@ catalogs:
     '@antfu/utils': ^9.1.0
   prod:
     c12: ^3.2.0
-    cac: ^6.7.14
+    citty: ^0.1.6
     consola: ^3.4.2
     defu: ^6.1.4
     exsolve: ^1.0.7
