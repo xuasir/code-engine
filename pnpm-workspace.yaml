@@ -1,11 +1,12 @@
 packages:
-  - playground
+  - playground/*
   - docs
   - packages/*
   - examples/*
 
 catalogs:
   build:
+    '@vitejs/plugin-vue': ^6.0.1
     unocss: ^66.4.2
     unplugin-vue-components: ^28.1.0
     vite-tsconfig-paths: ^5.1.4
@@ -29,7 +30,7 @@ catalogs:
     '@vueuse/core': ^12.7.0
     floating-vue: ^5.2.2
     pinia: ^3.0.1
-    vue: ^3.5.13
+    vue: ^3.5.18
   inlined:
     '@antfu/utils': ^9.1.0
   prod:
