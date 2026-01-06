@@ -64,6 +64,15 @@ export interface CodeEngineHooks {
    */
   'layer:loaded': (layerMap: Record<ScanTypeEnum, CodeEngineLayer[]>, ce: CodeEngine) => HookResult
 
+  /**
+   * layer 变更
+   * @param type 变更的 layer 类型
+   * @param layers 变更后的 layer 列表
+   * @param ce 代码引擎实例
+   * @returns
+   */
+  'layer:change': (type: ScanTypeEnum, layers: CodeEngineLayer[], ce: CodeEngine) => HookResult
+
   // 连接构建引擎
   /**
    * 代码引擎应用写入 vite 配置文件

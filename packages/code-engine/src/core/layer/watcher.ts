@@ -28,7 +28,6 @@ export function watchLayers(
 
   // 2. 准备模式配置
   // 根据选项预先计算每种类型的活动模式
-  // TODO: 应该使用reduce的泛型而不是断言
   const typeConfigs = (Object.keys(defaultPatterns) as ScanTypeEnum[]).reduce((acc, type) => {
     const configKey = typeConfigMap[type]
     const typeConfig = options[configKey]

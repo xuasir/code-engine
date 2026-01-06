@@ -4,6 +4,6 @@ import { useCodeEngine } from './context'
 export function addLayer(layer: CodeEngineLayerDefinition): void {
   const ce = useCodeEngine()
   ce.hook('layer:extend', async () => {
-    ce.options._layers.push(layer)
+    ce.options.__layers.push(layer)
   })
 }

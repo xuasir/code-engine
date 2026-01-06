@@ -11,5 +11,5 @@ export default defineResolvers({
   debug: false,
 
   // internal
-  _configFile: undefined,
+  __configFile: undefined,
 })

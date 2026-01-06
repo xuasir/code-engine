@@ -27,13 +27,13 @@ export async function loadCodeEngineConfig(options: LoadConfigOptions): Promise<
 
   // 填充默认字段
   codeEngineConfig.rootDir = root
-  codeEngineConfig._configFile = configFile!
+  codeEngineConfig.__configFile = configFile!
 
   // 加载 schema
   const CodeEngineConfigSchema = await loadSchema(root);
 
   // 初始化 layers
-  (codeEngineConfig as any)._layers = []
+  (codeEngineConfig as any).__layers = []
 
   // 附加默认值
   return await applyDefaults(CodeEngineConfigSchema, codeEngineConfig as any) as unknown as CodeEngineOptions

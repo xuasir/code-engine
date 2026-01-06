@@ -15,7 +15,7 @@ export async function installModules(mod: string | CodeEngineModule, options: Mo
   const moduleInstance = await loadModuleInstance(mod, codeEngine)
 
   // 在模块的异步本地存储中运行模块实例，并传入选项和 CodeEngine 实例
-  const res = await codeEngine._asyncLocalStorageModule?.run(moduleInstance, () => moduleInstance(options || {}, codeEngine))
+  const res = await codeEngine.__asyncLocalStorageModule?.run(moduleInstance, () => moduleInstance(options || {}, codeEngine))
 
   // 如果模块实例返回 false，则终止安装
   if (res === false) {

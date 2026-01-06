@@ -23,7 +23,7 @@ export async function resolveModules(codeEngine: CodeEngine): Promise<{
   // 获取配置中的模块列表
   const configModules = codeEngine.options.modules
   // 从依赖项中筛选出符合模块名称规则的模块
-  const depsModules = codeEngine._dependencies?.values().toArray().filter(dep => moduleReg.test(dep)) || []
+  const depsModules = codeEngine.__dependencies?.values().toArray().filter(dep => moduleReg.test(dep)) || []
   // 合并配置中的模块和依赖项中的模块
   const allModules = new Set([...internalModules, ...configModules, ...depsModules])
 

@@ -16,5 +16,5 @@ export interface ConfigSchema {
    * 配置文件路径
    * @private
    */
-  _configFile: string
+  __configFile: string
 }

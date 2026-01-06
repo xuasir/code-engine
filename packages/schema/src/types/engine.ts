@@ -10,11 +10,11 @@ export interface CodeEngine {
   /** 名称 */
   __name: string
   /** 版本 */
-  _version: string
+  __version: string
   /** 当前运行的 CodeEngine 模块实例的 AsyncLocalStorage */
-  _asyncLocalStorageModule: AsyncLocalStorage<CodeEngineModule>
+  __asyncLocalStorageModule: AsyncLocalStorage<CodeEngineModule>
   /** 依赖 */
-  _dependencies?: Set<string>
+  __dependencies?: Set<string>
 
   /** 加载后的配置 */
   options: CodeEngineOptions

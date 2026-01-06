@@ -13,14 +13,14 @@ export interface CodeEngineConfig extends DeepPartial<ConfigSchema> {
 
 export interface CodeEngineOptions extends ConfigSchema {
   /** 当前命令 */
-  _command?: {
+  __command?: {
     name: string
     args: Record<string, any>
   }
   /**
    * 代码工程的层
    */
-  _layers: CodeEngineLayerDefinition[]
+  __layers: CodeEngineLayerDefinition[]
   /**
    * 内部模块
    */

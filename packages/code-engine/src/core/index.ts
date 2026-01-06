@@ -10,7 +10,7 @@ import { version } from '../../package.json'
 import GenerateModule from './generate/module'
 
 export interface LoadCodeEngineOptions {
-  command: CodeEngineOptions['_command']
+  command: CodeEngineOptions['__command']
 }
 
 export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeEngine> {
@@ -18,7 +18,7 @@ export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeE
   const options = await loadCodeEngineConfig({ cwd: process.cwd() })
 
   // 命令
-  options._command = opts.command
+  options.__command = opts.command
 
   // 注入核心模块
   options.__internalModules ||= []
@@ -40,8 +40,8 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
   // 字面对象 创建 CodeEngine 实例
   const codeEngine: CodeEngine = {
     __name: `CodeEngine-${randomUUID()}`,
-    _version: version,
-    _asyncLocalStorageModule: new AsyncLocalStorage<CodeEngineModule>(),
+    __version: version,
+    __asyncLocalStorageModule: new AsyncLocalStorage<CodeEngineModule>(),
     options,
     hooks,
     hook: hooks.hook,
@@ -71,7 +71,7 @@ export async function initCodeEngine(codeEngine: CodeEngine): Promise<void> {
   // 如果是最佳实践模式，初始化对 layer 的监听，触发重新生成
 
   const packageJSON = await readPackageJSON(codeEngine.options.rootDir).catch(() => ({}) as PackageJson)
-  codeEngine._dependencies = new Set([...Object.keys(packageJSON.dependencies || {}), ...Object.keys(packageJSON.devDependencies || {})])
+  codeEngine.__dependencies = new Set([...Object.keys(packageJSON.dependencies || {}), ...Object.keys(packageJSON.devDependencies || {})])
 
   // 加载 模块
   await codeEngine.callHook('modules:before')
