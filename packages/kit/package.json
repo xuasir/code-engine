@@ -37,6 +37,8 @@
     "c12": "catalog:prod",
     "consola": "catalog:prod",
     "defu": "catalog:prod",
+    "dotenv": "catalog:prod",
+    "dotenv-expand": "catalog:prod",
     "exsolve": "catalog:prod",
     "jiti": "catalog:prod",
     "pathe": "catalog:prod",

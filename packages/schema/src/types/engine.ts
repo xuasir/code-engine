@@ -1,6 +1,7 @@
 import type { Hookable } from 'hookable'
 import type { AsyncLocalStorage } from 'node:async_hooks'
 import type { CodeEngineOptions } from './config'
+import type { CodeEngineEnv } from './env'
 import type { CodeEngineHooks } from './hooks'
 import type { CodeEngineModule } from './module'
 import type { VFS } from './vfs'
@@ -29,6 +30,9 @@ export interface CodeEngine {
 
   /** 虚拟文件系统 */
   vfs: VFS
+
+  /** 环境 */
+  env: CodeEngineEnv
 
   /** 生命周期 */
   ready: () => Promise<void>

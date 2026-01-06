@@ -1,6 +1,7 @@
 export { getCodeEngineCtx, runWithCodeEngineContext, setCodeEngineCtx, tryUseCodeEngine, useCodeEngine } from './context'
 export { addLayer } from './layer'
-export { loadCodeEngineConfig } from './lodaer/config'
+export { loadCodeEngineConfig } from './loader/config'
+export { createEnv, Env, loadEnv } from './loader/env'
 export { useLogger } from './logger'
 export { defineModule } from './module/define'
 export { installModules } from './module/install'

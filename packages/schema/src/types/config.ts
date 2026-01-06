@@ -1,4 +1,5 @@
 import type { SchemaDefinition } from 'untyped'
+import type { CodeEngineMode } from './env'
 import type { CodeEngineLayerDefinition } from './layer'
 import type { CodeEngineModule, ModuleMeta, ModuleOptions, ModuleSetupInstallResult } from './module'
 import type { ConfigSchema } from './schema'
@@ -12,6 +13,10 @@ export interface CodeEngineConfig extends DeepPartial<ConfigSchema> {
 }
 
 export interface CodeEngineOptions extends ConfigSchema {
+  /** 项目根目录 */
+  __rootDir: string
+  /** 模式 */
+  __mode: CodeEngineMode
   /** 当前命令 */
   __command?: {
     name: string

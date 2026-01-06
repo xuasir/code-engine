@@ -3,7 +3,8 @@ import type { PackageJson } from 'pkg-types'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { createVFS, installModules, loadCodeEngineConfig, resolveModules, runWithCodeEngineContext, setCodeEngineCtx } from '@a-sir/code-engine-kit'
+import { createEnv, createVFS, installModules, loadCodeEngineConfig, loadEnv, resolveModules, runWithCodeEngineContext, setCodeEngineCtx } from '@a-sir/code-engine-kit'
+import { CodeEngineMode } from '@a-sir/code-engine-schema'
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
 import { version } from '../../package.json'
@@ -11,11 +12,29 @@ import GenerateModule from './generate/module'
 
 export interface LoadCodeEngineOptions {
   command: CodeEngineOptions['__command']
+  mode?: CodeEngineMode | string
 }
 
 export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeEngine> {
-  // 加载配置文件
-  const options = await loadCodeEngineConfig({ cwd: process.cwd() })
+  const root = process.cwd()
+
+  // 1. 确定 mode
+  const mode = (opts.mode as CodeEngineMode) || CodeEngineMode.DEVELOPMENT
+
+  // 2. 加载环境变量
+  await loadEnv(root, mode)
+
+  // 3. 加载配置文件 (注入 mode)
+  const options = await loadCodeEngineConfig({
+    cwd: root,
+    mode,
+  })
+
+  // 根目录
+  options.__rootDir = root
+
+  // 模式
+  options.__mode = mode
 
   // 命令
   options.__command = opts.command
@@ -24,7 +43,7 @@ export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeE
   options.__internalModules ||= []
   options.__internalModules.push(GenerateModule)
 
-  // 创建 codeEngine 实例
+  // 创建 codeEngine 实例 (传入 env)
   const codeEngine = createCodeEngine(options)
 
   // codeEngine ready
@@ -48,6 +67,7 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
     callHook: hooks.callHook,
     addHooks: hooks.addHooks,
     vfs: createVFS(),
+    env: createEnv(options.__rootDir, options.__mode),
     ready: () => runWithCodeEngineContext(codeEngine, () => initCodeEngine(codeEngine)),
     close: () => codeEngine.callHook('close', codeEngine),
     runWithContext: fn => runWithCodeEngineContext(codeEngine, fn),
@@ -68,9 +88,7 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
 }
 
 export async function initCodeEngine(codeEngine: CodeEngine): Promise<void> {
-  // 如果是最佳实践模式，初始化对 layer 的监听，触发重新生成
-
-  const packageJSON = await readPackageJSON(codeEngine.options.rootDir).catch(() => ({}) as PackageJson)
+  const packageJSON = await readPackageJSON(codeEngine.options.__rootDir).catch(() => ({}) as PackageJson)
   codeEngine.__dependencies = new Set([...Object.keys(packageJSON.dependencies || {}), ...Object.keys(packageJSON.devDependencies || {})])
 
   // 加载 模块
