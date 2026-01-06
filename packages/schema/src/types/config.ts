@@ -3,7 +3,10 @@ import type { CodeEngineLayerDefinition } from './layer'
 import type { CodeEngineModule, ModuleMeta, ModuleOptions, ModuleSetupInstallResult } from './module'
 import type { ConfigSchema } from './schema'
 
-export interface CodeEngineConfig extends ConfigSchema {
+// eslint-disable-next-line ts/no-unsafe-function-type
+type DeepPartial<T> = T extends Function ? T : T extends Record<string, any> ? { [P in keyof T]?: DeepPartial<T[P]> } : T
+
+export interface CodeEngineConfig extends DeepPartial<ConfigSchema> {
   /** 配置 */
   $schema?: SchemaDefinition
 }

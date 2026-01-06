@@ -1,3 +1,4 @@
+import type { LayerOptions } from './layer'
 import type { CodeEngineModule, ModuleOptions } from './module'
 
 export interface ConfigSchema {
@@ -9,6 +10,8 @@ export interface ConfigSchema {
   modules: Array<CodeEngineModule | string | [CodeEngineModule, ModuleOptions] | [string, ModuleOptions]>
   /** debug 模式 */
   debug: boolean
+  /** 层配置 */
+  layers: LayerOptions
   /**
    * 配置文件路径
    * @private

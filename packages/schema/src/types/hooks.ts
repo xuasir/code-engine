@@ -1,5 +1,6 @@
 import type { Schema, SchemaDefinition } from 'untyped'
 import type { CodeEngine } from './engine'
+import type { CodeEngineLayer, ScanTypeEnum } from './layer'
 
 export type HookResult = Promise<void> | void
 
@@ -61,7 +62,7 @@ export interface CodeEngineHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:loaded': (ce: CodeEngine) => HookResult
+  'layer:loaded': (layerMap: Record<ScanTypeEnum, CodeEngineLayer[]>, ce: CodeEngine) => HookResult
 
   // 连接构建引擎
   /**

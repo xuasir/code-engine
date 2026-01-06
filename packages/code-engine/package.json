@@ -38,8 +38,16 @@
   "dependencies": {
     "@a-sir/code-engine-kit": "workspace:*",
     "@a-sir/code-engine-schema": "workspace:*",
+    "chokidar": "catalog:prod",
     "citty": "catalog:prod",
+    "es-module-lexer": "catalog:prod",
+    "fast-glob": "catalog:prod",
     "hookable": "catalog:prod",
-    "pkg-types": "catalog:prod"
+    "micromatch": "catalog:prod",
+    "pkg-types": "catalog:prod",
+    "scule": "catalog:prod"
+  },
+  "devDependencies": {
+    "@types/micromatch": "catalog:types"
   }
 }
