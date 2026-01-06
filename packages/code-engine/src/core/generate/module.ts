@@ -22,7 +22,7 @@ export default defineModule({
 
       // 写入文件
       const start = performance.now()
-      await ce.vfs.root.write(ce.options.rootDir)
+      await ce.vfs.root.write(ce.options.__rootDir)
       const end = performance.now()
       logger.debug('write files done, cost: %dms', end - start)
 

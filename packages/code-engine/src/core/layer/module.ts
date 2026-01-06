@@ -3,6 +3,7 @@ import path from 'node:path'
 import { addLayer, defineModule, useLogger } from '@a-sir/code-engine-kit'
 import { ScanPriorityEnum } from '@a-sir/code-engine-schema'
 import { loadLayers } from './loader'
+import { watchLayers } from './watcher'
 
 export default defineModule<LayerOptions>({
   meta: {
@@ -16,7 +17,7 @@ export default defineModule<LayerOptions>({
     // 添加 user layer
     if (resolvedOptions.enabled) {
       addLayer({
-        cwd: path.resolve(ce.options.rootDir, resolvedOptions.name),
+        cwd: path.resolve(ce.options.__rootDir, resolvedOptions.name),
         priority: ScanPriorityEnum.User,
         ignore: [],
       })
@@ -33,18 +34,18 @@ export default defineModule<LayerOptions>({
 
       // 监听变化，并且注册layer更新相关的钩子
       // 仅在开发模式下启用
-      // if (process.env.NODE_ENV === 'development' || (ce.options as any).dev) {
-      //   const watcher = watchLayers(layers, resolvedOptions, async (type, data) => {
-      //     logger.info(`Layer update detected: ${type}`)
-      //     // 更新 layerMap
-      //     layerMap[type] = data
-      //     // 触发钩子
-      //     await ce.callHook('layer:change', type, data, ce)
-      //   })
+      if (ce.env.dev) {
+        const watcher = watchLayers(layers, resolvedOptions, async (type, data) => {
+          logger.info(`Layer update detected: ${type}`)
+          // 更新 layerMap
+          layerMap[type] = data
+          // 触发钩子
+          await ce.callHook('layer:change', type, data, ce)
+        })
 
-      //   // 注册销毁钩子
-      //   ce.hook('close', () => watcher.close())
-      // }
+        // 注册销毁钩子
+        ce.hook('close', () => watcher.close())
+      }
       // 分析layer
       await ce.callHook('layer:loaded', layerMap, ce)
     })
