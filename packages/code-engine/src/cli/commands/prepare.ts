@@ -6,12 +6,19 @@ export default defineCommand({
     name: 'prepare',
     description: 'Prepare .code-engine for development/build',
   },
-  args: {},
-  async run(_ctx) {
+  args: {
+    mode: {
+      type: 'string',
+      description: 'Run in specific mode',
+      default: 'development',
+    },
+  },
+  async run(ctx) {
     loadCodeEngine({
+      mode: ctx.args.mode,
       command: {
         name: 'prepare',
-        args: {},
+        args: ctx.args,
       },
     }).catch((err: any) => {
       // 处理错误
