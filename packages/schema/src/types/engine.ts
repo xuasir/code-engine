@@ -4,9 +4,10 @@ import type { CodeEngineOptions } from './config'
 import type { CodeEngineEnv } from './env'
 import type { CodeEngineHooks } from './hooks'
 import type { CodeEngineModule } from './module'
+import type { ReactiveContext } from './reactive'
 import type { VFS } from './vfs'
 
-export interface CodeEngine {
+export interface CodeEngine extends ReactiveContext {
   // 内部字段
   /** 名称 */
   __name: string

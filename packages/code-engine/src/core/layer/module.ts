@@ -1,6 +1,6 @@
 import type { LayerOptions } from '@a-sir/code-engine-schema'
 import path from 'node:path'
-import { addLayer, defineModule, useLogger } from '@a-sir/code-engine-kit'
+import { addLayer, defineModule, getLayerKey, notify, useLogger } from '@a-sir/code-engine-kit'
 import { ScanPriorityEnum } from '@a-sir/code-engine-schema'
 import { loadLayers } from './loader'
 import { watchLayers } from './watcher'
@@ -39,6 +39,8 @@ export default defineModule<LayerOptions>({
           logger.info(`Layer update detected: ${type}`)
           // 更新 layerMap
           layerMap[type] = data
+          // 通知更新
+          notify(getLayerKey(type))
           // 触发钩子
           await ce.callHook('layer:change', type, data, ce)
         })

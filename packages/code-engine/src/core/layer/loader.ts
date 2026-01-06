@@ -1,5 +1,6 @@
 import type { CodeEngineLayer, CodeEngineLayerDefinition, LayerOptions, ScanConfig } from '@a-sir/code-engine-schema'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
+import { getLayerKey, useProvide } from '@a-sir/code-engine-kit'
 import { ScanTypeEnum } from '@a-sir/code-engine-schema'
 import fg from 'fast-glob'
 import { camelCase, kebabCase, pascalCase } from 'scule'
@@ -64,6 +65,9 @@ export async function loadLayers(layers: CodeEngineLayerDefinition[], options: L
 
       // 执行扫描与合并
       layerMap[type] = await scanAndMerge(layers, scanConfig)
+
+      // 注册数据
+      useProvide(getLayerKey(type), () => layerMap[type])
     }),
   )
 

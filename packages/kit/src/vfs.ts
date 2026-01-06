@@ -1,6 +1,6 @@
 import type { VFS, VFSFileTemplate, VFSFileTemplateOptions, VFSFolderTemplate } from '@a-sir/code-engine-schema'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join, normalize } from 'pathe'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, normalize } from 'pathe'
 import { useCodeEngine } from './context'
 
 // 添加文件到虚拟文件系统
@@ -20,33 +20,16 @@ export function createVFS(): VFS {
 
     // 添加文件夹到虚拟文件系统
     addFolder(folderPath: string) {
-      const normalizedFolderPath = normalize(folderPath)
-      // 递归创建
-      const folderPathSegments = normalizedFolderPath.split('/')
-      let currentFolder: VFSFolderTemplate = this.root
-      for (const folderPathSegment of folderPathSegments) {
-        const folder = currentFolder.findFolder(folderPathSegment)
-        if (folder) {
-          currentFolder = folder
-        }
-        else {
-          currentFolder.folders.push(createFolder(folderPathSegment))
-          currentFolder = currentFolder.folders[currentFolder.folders.length - 1]
-        }
-      }
-      return currentFolder
+      return resolveFolder(this.root, folderPath, true)!
     },
 
     // 添加文件到虚拟文件系统
     addFile(filePath: string, opts: VFSFileTemplateOptions) {
       const normalizedFilePath = normalize(filePath)
-      const folderPathSegments = normalizedFilePath.split('/')
-      const fileName = folderPathSegments.slice(-1)[0]
-      const folderPath = folderPathSegments.slice(0, -1).join('/')
-      let folder = this.findFolder(folderPath)
-      if (!folder) {
-        folder = this.addFolder(folderPath)
-      }
+      const folderPath = dirname(normalizedFilePath)
+      const fileName = basename(normalizedFilePath)
+
+      const folder = resolveFolder(this.root, folderPath, true)!
       const file = createFile({ ...opts, filename: fileName })
       folder.files.push(file)
       return file
@@ -54,26 +37,16 @@ export function createVFS(): VFS {
 
     // 查找文件夹
     findFolder(folderPath: string) {
-      const folderPathSegments = folderPath.split('/')
-      let currentFolder: VFSFolderTemplate = vfs.root
-      for (const folderPathSegment of folderPathSegments) {
-        const folder = currentFolder.findFolder(folderPathSegment)
-        if (folder) {
-          currentFolder = folder
-        }
-        else {
-          return undefined
-        }
-      }
-      return currentFolder
+      return resolveFolder(this.root, folderPath, false)
     },
 
     // 查找文件
     findFile(filePath: string) {
-      const allPathSegments = filePath.split('/')
-      const folderPathSegments = allPathSegments.slice(0, -1)
-      const fileName = allPathSegments.slice(-1)[0]
-      const folder = this.findFolder(folderPathSegments.join('/'))
+      const normalizedFilePath = normalize(filePath)
+      const folderPath = dirname(normalizedFilePath)
+      const fileName = basename(normalizedFilePath)
+
+      const folder = resolveFolder(this.root, folderPath, false)
       if (folder) {
         return folder.findFile(fileName)
       }
@@ -82,6 +55,40 @@ export function createVFS(): VFS {
   }
 
   return vfs
+}
+
+/**
+ * 内部辅助函数：解析文件夹路径
+ * @param root 起始根文件夹
+ * @param path 目标路径
+ * @param createIfMissing 如果不存在是否创建
+ */
+function resolveFolder(root: VFSFolderTemplate, path: string, createIfMissing: boolean): VFSFolderTemplate | undefined {
+  const normalizedPath = normalize(path)
+
+  // 处理根路径情况，path可能是空或者'.'
+  if (normalizedPath === '' || normalizedPath === '.') {
+    return root
+  }
+
+  const parts = normalizedPath.split('/').filter(p => p && p !== '.')
+  let current: VFSFolderTemplate = root
+
+  for (const part of parts) {
+    let next = current.findFolder(part)
+    if (!next) {
+      if (createIfMissing) {
+        next = createFolder(part)
+        current.folders.push(next)
+      }
+      else {
+        return undefined
+      }
+    }
+    current = next
+  }
+
+  return current
 }
 
 // 创建文件夹
@@ -93,9 +100,9 @@ function createFolder(folderName: string): VFSFolderTemplate {
 
     // 将文件夹写入文件系统
     async write(cwd: string) {
-    // 写入文件系统
+      // 写入文件系统
       const path = join(cwd, this.folderName)
-      mkdirSync(path, { recursive: true })
+      await mkdir(path, { recursive: true })
       await Promise.all([...this.folders.map(folder => folder.write(path)), ...this.files.map(file => file.write(path))])
     },
 
@@ -120,8 +127,14 @@ function createFile(opts: VFSFileTemplateOptions): VFSFileTemplate {
 
     // 将文件写入文件系统
     write: async (cwd: string) => {
-      const path = join(cwd, file.filename)
-      writeFileSync(path, await file.getContents(file.options))
+      const ce = useCodeEngine()
+      // 利用 Effect 系统实现自动依赖追踪与更新
+      await ce.runEffect(async () => {
+        const path = join(cwd, file.filename)
+        // TODO: 这里可以进一步优化，比如读取磁盘对比 hash，只有内容变了才写入
+        const content = await file.getContents(file.options)
+        await writeFile(path, content)
+      })
     },
   }
 

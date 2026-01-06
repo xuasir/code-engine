@@ -3,7 +3,7 @@ import type { PackageJson } from 'pkg-types'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { createEnv, createVFS, installModules, loadCodeEngineConfig, loadEnv, resolveModules, runWithCodeEngineContext, setCodeEngineCtx } from '@a-sir/code-engine-kit'
+import { createEnv, createReactiveRegistry, createVFS, installModules, loadCodeEngineConfig, loadEnv, resolveModules, runWithCodeEngineContext, setCodeEngineCtx } from '@a-sir/code-engine-kit'
 import { CodeEngineMode } from '@a-sir/code-engine-schema'
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
@@ -55,6 +55,7 @@ export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeE
 function createCodeEngine(options: CodeEngineOptions): CodeEngine {
   // 创建 hook
   const hooks = createHooks<CodeEngineHooks>()
+  const reactiveRegistry = createReactiveRegistry()
 
   // 字面对象 创建 CodeEngine 实例
   const codeEngine: CodeEngine = {
@@ -71,6 +72,12 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
     ready: () => runWithCodeEngineContext(codeEngine, () => initCodeEngine(codeEngine)),
     close: () => codeEngine.callHook('close', codeEngine),
     runWithContext: fn => runWithCodeEngineContext(codeEngine, fn),
+
+    // Reactive Context Implementation
+    provide: (key, value) => reactiveRegistry.provide(key, value),
+    get: key => reactiveRegistry.get(key),
+    notify: key => reactiveRegistry.notify(key),
+    runEffect: fn => reactiveRegistry.runEffect(fn),
   }
 
   // hook 执行wrapper函数注入 codeEngine 实例上下文
