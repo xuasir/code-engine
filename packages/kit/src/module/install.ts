@@ -51,11 +51,11 @@ async function loadModuleInstance(module: string | CodeEngineModule, codeEngine:
 
   try {
     // 创建 Jiti 实例，用于动态导入模块
-    const jiti = createJiti(codeEngine.options.rootDir)
+    const jiti = createJiti(codeEngine.options.__rootDir)
 
     // 使用 resolveModulePath 解析模块路径
     const modulePath = resolveModulePath(module, {
-      from: pathToFileURL(codeEngine.options.rootDir), // 从 CodeEngine 的根目录开始解析
+      from: pathToFileURL(codeEngine.options.__rootDir), // 从 CodeEngine 的根目录开始解析
       suffixes: ['', 'index', 'module', 'module/index'], // 模块路径的后缀
       extensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'], // 模块文件的扩展名
     })

@@ -75,7 +75,7 @@ function resolveModule(mod: CodeEngineModule | string | [CodeEngineModule, Modul
   // 使用 resolveModulePath 解析模块路径
   const modulePath = resolveModulePath(module, {
     try: true, // 尝试解析模块路径
-    from: pathToFileURL(codeEngine.options.rootDir), // 从 CodeEngine 的根目录开始解析
+    from: pathToFileURL(codeEngine.options.__rootDir), // 从 CodeEngine 的根目录开始解析
     suffixes: ['', 'index', 'module', 'module/index'], // 模块路径的后缀
     extensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'], // 模块文件的扩展名
   })
