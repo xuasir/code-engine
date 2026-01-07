@@ -5,18 +5,6 @@ import { ScanTypeEnum } from '@a-sir/code-engine-schema'
 import fg from 'fast-glob'
 import { camelCase, kebabCase, pascalCase } from 'scule'
 
-// 映射 Enum 到 Options Key
-export const typeConfigMap: Record<ScanTypeEnum, Exclude<keyof LayerOptions, 'name' | 'enabled'>> = {
-  [ScanTypeEnum.Api]: 'api',
-  [ScanTypeEnum.Component]: 'components',
-  [ScanTypeEnum.Composable]: 'composables',
-  [ScanTypeEnum.Layout]: 'layouts',
-  [ScanTypeEnum.Page]: 'pages',
-  [ScanTypeEnum.Store]: 'store',
-  [ScanTypeEnum.Util]: 'utils',
-  [ScanTypeEnum.Icon]: 'icons',
-}
-
 // 默认 Patterns
 export const defaultPatterns: Record<ScanTypeEnum, string[]> = {
   [ScanTypeEnum.Component]: ['**/*.{vue,jsx,tsx,ts}'],
@@ -48,8 +36,7 @@ export async function loadLayers(layers: CodeEngineLayerDefinition[], options: L
   await Promise.all(
     (Object.keys(layerMap) as ScanTypeEnum[]).map(async (type) => {
       // 获取该类型的扫描配置 (e.g. { name: 'components', pattern: '**/*.vue' })
-      const configKey = typeConfigMap[type]
-      const typeConfig = options[configKey]
+      const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
 
       if (!typeConfig || typeConfig.enabled === false) {
         return
@@ -157,6 +144,35 @@ export async function scanAndMerge(layers: CodeEngineLayerDefinition[], config: 
         existing.overrides.unshift(simplified as any)
       }
       else {
+        const isFunctional = [
+          ScanTypeEnum.Composable,
+          ScanTypeEnum.Store,
+          ScanTypeEnum.Util,
+          ScanTypeEnum.Api,
+        ].includes(config.type)
+
+        const name = isFunctional
+          ? {
+              origin: '',
+              pascal: '',
+              lazyPascal: '',
+              kebab: '',
+              lazyKebab: '',
+              safeVar: '',
+              safeLazyVar: '',
+              chunk: '',
+            }
+          : {
+              origin: basename(file),
+              pascal: pascalCase(id),
+              lazyPascal: `Lazy${pascalCase(id)}`,
+              kebab: kebabCase(id),
+              lazyKebab: `lazy-${kebabCase(id)}`,
+              safeVar: camelCase(id),
+              safeLazyVar: `lazy${camelCase(id)}`,
+              chunk: kebabCase(id),
+            }
+
         // 5. 创建完整对象 (主对象)
         const newItem: CodeEngineLayer = {
           meta: {
@@ -171,16 +187,7 @@ export async function scanAndMerge(layers: CodeEngineLayerDefinition[], config: 
             alias: 'TODO', // 需要 resolveAlias
             prefetch: 'TODO',
           },
-          name: {
-            origin: basename(file),
-            pascal: pascalCase(id),
-            lazyPascal: `Lazy${pascalCase(id)}`,
-            kebab: kebabCase(id),
-            lazyKebab: `lazy-${kebabCase(id)}`,
-            safeVar: camelCase(id),
-            safeLazyVar: `lazy${camelCase(id)}`,
-            chunk: kebabCase(id),
-          },
+          name,
           config: {
             export: 'default',
             prefetch: false,

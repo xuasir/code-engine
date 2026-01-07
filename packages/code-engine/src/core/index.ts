@@ -64,9 +64,9 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
     __asyncLocalStorageModule: new AsyncLocalStorage<CodeEngineModule>(),
     options,
     hooks,
-    hook: hooks.hook,
+    hook: hooks.hook.bind(hooks),
     callHook: hooks.callHook,
-    addHooks: hooks.addHooks,
+    addHooks: hooks.addHooks.bind(hooks),
     vfs: createVFS(),
     env: createEnv(options.__rootDir, options.__mode),
     ready: () => runWithCodeEngineContext(codeEngine, () => initCodeEngine(codeEngine)),
@@ -85,7 +85,7 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
   hooks.callHook = (...args) => runWithCodeEngineContext(codeEngine, () => callHook(...args))
   hooks.callHookParallel = (...args) => runWithCodeEngineContext(codeEngine, () => callHookParallel(...args))
   hooks.callHookWith = (...args) => runWithCodeEngineContext(codeEngine, () => callHookWith(...args))
-  codeEngine.callHook = hooks.callHook
+  codeEngine.callHook = hooks.callHook.bind(hooks)
 
   // 注册上下文
   setCodeEngineCtx(codeEngine)

@@ -4,7 +4,7 @@ import { relative } from 'node:path'
 import { debounce } from '@a-sir/code-engine-kit'
 import { watch } from 'chokidar'
 import micromatch from 'micromatch'
-import { defaultPatterns, scanAndMerge, typeConfigMap } from './loader'
+import { defaultPatterns, scanAndMerge } from './loader'
 
 /**
  * 创建 Layer 监听器
@@ -29,13 +29,12 @@ export function watchLayers(
   // 2. 准备模式配置
   // 根据选项预先计算每种类型的活动模式
   const typeConfigs = (Object.keys(defaultPatterns) as ScanTypeEnum[]).reduce((acc, type) => {
-    const configKey = typeConfigMap[type]
-    const typeConfig = options[configKey]
+    const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
 
     if (typeConfig && typeConfig.enabled === false)
       return acc
 
-    const dirName = typeConfig?.name || typeConfigMap[type] // 默认目录名假设与加载器逻辑匹配
+    const dirName = typeConfig?.name || type // 默认目录名假设与加载器逻辑匹配
     const patterns = typeConfig?.pattern || defaultPatterns[type]
 
     acc[type] = {
@@ -53,12 +52,11 @@ export function watchLayers(
     dirtyTypes.clear()
 
     await Promise.all(typesToUpdate.map(async (type) => {
-      const configKey = typeConfigMap[type]
-      const typeConfig = options[configKey]
+      const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
 
       const scanConfig: ScanConfig = {
         type,
-        name: typeConfig?.name || typeConfigMap[type] as string,
+        name: typeConfig?.name || type as string,
         pattern: typeConfig?.pattern || defaultPatterns[type],
         ignore: typeConfig?.ignore,
       }

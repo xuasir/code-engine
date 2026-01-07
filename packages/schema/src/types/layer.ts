@@ -1,13 +1,13 @@
 // 扫描模块类型枚举
 export enum ScanTypeEnum {
-  Layout = 'layout',
-  Component = 'component',
-  Composable = 'composable',
+  Layout = 'layouts',
+  Component = 'components',
+  Composable = 'composables',
   Store = 'store',
-  Page = 'page',
+  Page = 'pages',
   Api = 'api',
-  Icon = 'icon',
-  Util = 'util',
+  Icon = 'icons',
+  Util = 'utils',
 }
 
 // 扫描模块优先级枚举
