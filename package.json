@@ -10,7 +10,8 @@
     "prepublishOnly": "nr build",
     "docs": "pnpm -C docs run docs:dev",
     "docs:build": "pnpm -C docs run docs:build",
-    "release": "bumpp -r && pnpm -r --filter ./packages/** publish",
+    "version": "bumpp -r",
+    "release": "pnpm -r --filter ./packages/** publish",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "prepare": "simple-git-hooks"
