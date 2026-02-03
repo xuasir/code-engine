@@ -25,9 +25,9 @@
     "eslint": "catalog:cli",
     "lint-staged": "catalog:cli",
     "simple-git-hooks": "catalog:cli",
+    "tsdown": "catalog:cli",
     "tsx": "catalog:cli",
     "typescript": "catalog:cli",
-    "unbuild": "catalog:cli",
     "vite": "catalog:cli",
     "vitest": "catalog:testing"
   },

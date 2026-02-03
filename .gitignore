@@ -12,3 +12,8 @@ temp
 cache
 .eslintcache
 .code-engine
+
+# AI
+.agents
+.codex
+.trae
