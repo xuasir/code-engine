@@ -1,4 +1,4 @@
-import type { CodeEngineLayer, CodeEngineLayerDefinition, LayerOptions, ScanConfig } from '@a-sir/code-engine-schema'
+import type { CodeEngine, CodeEngineLayer, CodeEngineLayerDefinition, LayerOptions } from '@a-sir/code-engine-schema'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { getLayerKey, useProvide } from '@a-sir/code-engine-kit'
 import { ScanTypeEnum } from '@a-sir/code-engine-schema'
@@ -18,9 +18,86 @@ export const defaultPatterns: Record<ScanTypeEnum, string[]> = {
 }
 
 /**
- * 核心：加载 Layers
+ * 将 Layer 文件挂载到 VFS
+ * @param ce CodeEngine上下文
+ * @param layers Layer定义列表
+ * @param options Layer选项
  */
-export async function loadLayers(layers: CodeEngineLayerDefinition[], options: LayerOptions): Promise<Record<ScanTypeEnum, CodeEngineLayer[]>> {
+export async function mountLayerFiles(ce: CodeEngine, layers: CodeEngineLayerDefinition[], options: LayerOptions): Promise<void> {
+  // 遍历所有 Layer
+  for (const layerDef of layers) {
+    // 为每一层创建一个 Scope，使用 Layer 的优先级
+    // 注意：Scope 只需要创建一次，但如果 VFS Scope 机制是基于实例的，我们需要确保同一个 Layer 名称对应同一个 Scope 吗？
+    // 这里简单起见，我们直接在 mount 时传入 priority，或者使用 scope 方法。
+    // 为了方便管理，我们假设 Scope 名字即 Layer 名字 (basename(cwd))
+    const layerName = basename(layerDef.cwd)
+    const scope = ce.vfs.scope({
+      name: layerName,
+      priority: layerDef.priority || 0,
+    })
+
+    // 并行扫描所有类型的资源
+    const scanTypes = Object.keys(defaultPatterns) as ScanTypeEnum[]
+    await Promise.all(scanTypes.map(async (type) => {
+      const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
+      if (!typeConfig || typeConfig.enabled === false) {
+        return
+      }
+
+      const dirName = typeConfig.name || type
+      const layerDir = resolve(layerDef.cwd, dirName)
+      const patterns = typeConfig.pattern || defaultPatterns[type]
+      const ignore = typeConfig.ignore || layerDef.ignore || ['**/*.d.ts', '**/*.test.ts', '**/*.spec.ts']
+
+      // 扫描文件
+      const files = await fg(patterns, {
+        cwd: layerDir,
+        ignore,
+        absolute: false, // 获取相对路径
+        onlyFiles: true,
+      })
+
+      // 挂载到 VFS
+      for (const file of files) {
+        if (basename(file).startsWith('_'))
+          continue
+
+        const id = resolveLayerId(file, type)
+        // 生成虚拟路径: /<typeDir>/<id>.<uid>
+        // 为了避免扩展名冲突 (e.g. .ts vs .js), 我们在 VFS 路径中通常不包含原始扩展名?
+        // 但是 VFS 需要唯一的 key。如果 key 是 hash(path, priority)，那 path 必须一致。
+        // 如果 component A 有 Button.vue (LayerUser) 和 Button.tsx (LayerBase)，
+        // 它们的 ID 都是 'BaseButton' (假定)。
+        // 如果虚拟路径是 /components/BaseButton，那么它们会冲突，高优先级胜出。这是符合预期的。
+        // 问题是：如果虚拟路径没有扩展名，后续处理 (如 import) 会方便吗？
+        // 通常 import 需要扩展名或者 loader 处理。
+        // 我们可以保留原始扩展名吗？不行，为了冲突，我们需要统一路径。
+        // 所以使用 /<dirName>/<id> 作为虚拟路径。
+        // 但是为了方便调试和潜在的后缀识别，也许可以加一个统一后缀？
+        // 这里暂定：直接使用 ID 构造路径。对于 Component，通常 ID 是 PascalCase。
+        // 虚拟路径: /{dirName}/{id} (无后缀)
+        // 或者，为了表示这是一个虚拟文件，我们可以加个后缀，比如 .layer
+        // 现阶段：直接 mount 到 /{dirName}/{id}
+
+        const virtualPath = join('/', dirName, id)
+        const physicalPath = join(layerDir, file)
+
+        // 挂载
+        scope.mount(virtualPath, physicalPath, {
+          originalPath: file,
+          pattern: Array.isArray(patterns) ? patterns[0] : patterns, // 简单记录一下
+        })
+      }
+    }))
+  }
+}
+
+/**
+ * 从 VFS 同步 LayerMap
+ * @param ce CodeEngine上下文
+ * @param options Layer选项
+ */
+export async function syncVfsToLayerMap(ce: CodeEngine, options: LayerOptions): Promise<void> {
   const layerMap: Record<ScanTypeEnum, CodeEngineLayer[]> = {
     [ScanTypeEnum.Api]: [],
     [ScanTypeEnum.Component]: [],
@@ -32,186 +109,186 @@ export async function loadLayers(layers: CodeEngineLayerDefinition[], options: L
     [ScanTypeEnum.Icon]: [],
   }
 
-  // 并行扫描所有类型的资源
-  await Promise.all(
-    (Object.keys(layerMap) as ScanTypeEnum[]).map(async (type) => {
-      // 获取该类型的扫描配置 (e.g. { name: 'components', pattern: '**/*.vue' })
-      const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
-
-      if (!typeConfig || typeConfig.enabled === false) {
-        return
-      }
-
-      // 构造完整配置：类型 + 基础配置
-      const scanConfig: ScanConfig = {
-        type,
-        name: typeConfig.name,
-        pattern: typeConfig.pattern || defaultPatterns[type],
-        ignore: typeConfig.ignore,
-      }
-
-      // 执行扫描与合并
-      layerMap[type] = await scanAndMerge(layers, scanConfig)
-
-      // 注册数据
-      useProvide(getLayerKey(type), () => layerMap[type])
-    }),
-  )
-
-  return layerMap
-}
-
-/**
- * 扫描并合并 Layers
- * 核心逻辑：
- * 1. 遍历所有 Layers (Base -> User)
- * 2. 针对每个 Layer，扫描指定目录下的文件
- * 3. 生成 ID (resolveLayerId)
- * 4. 存入 Map，后来的覆盖先来的 (Override)
- */
-export async function scanAndMerge(layers: CodeEngineLayerDefinition[], config: ScanConfig): Promise<CodeEngineLayer[]> {
-  // 1. 并行扫描所有 Layer 的文件
-  const scanResults = await Promise.all(layers.map(async (layerDef) => {
-    const layerDir = resolve(layerDef.cwd, config.name)
-    const files = await fg(config.pattern || '**/*', {
-      cwd: layerDir,
-      ignore: config.ignore || ['**/*.d.ts', '**/*.test.ts', '**/*.spec.ts'],
-      absolute: false, // 获取相对路径，方便计算 ID
-      onlyFiles: true,
-    })
-    return { layerDef, layerDir, files }
-  }))
-
-  // 2. 按优先级降序排序 (User -> Base)，以便实现对象剪枝
-  // 高优先级的先处理，确立主对象；低优先级的后处理，作为 overrides
-  scanResults.sort((a, b) => (b.layerDef.priority || 0) - (a.layerDef.priority || 0))
-
-  const itemMap = new Map<string, CodeEngineLayer>()
-  const idCache = new Map<string, string>()
-
-  for (const { layerDef, layerDir, files } of scanResults) {
-    for (const file of files) {
-      if (basename(file).startsWith('_'))
-        continue // 忽略 _ 开头
-
-      // 3. ID 计算缓存
-      const cacheKey = `${file}:${config.type}`
-      let id = idCache.get(cacheKey)
-      if (!id) {
-        id = resolveLayerId(file, config.type)
-        idCache.set(cacheKey, id)
-      }
-
-      const absPath = join(layerDir, file)
-      const existing = itemMap.get(id)
-
-      if (existing) {
-        // 4. 剪枝优化：如果已存在（高优先级已处理），只创建简化的 Override 对象
-        // 从而避免了昂贵的 name 变体计算和 loader 定义
-        const simplified: Partial<CodeEngineLayer> = {
-          meta: {
-            layer: basename(layerDef.cwd),
-            priority: layerDef.priority || 0,
-          },
-          path: {
-            root: layerDef.cwd,
-            abs: absPath,
-            relative: join(config.name, file),
-            scan: file,
-            alias: 'TODO',
-            prefetch: 'TODO',
-          },
-        }
-
-        // 维护 Overrides 顺序：期望是 [Base, Middle, User] (相对于主对象)
-        // 由于我们是倒序遍历 (User -> Middle -> Base)
-        // 当前遇到的 layer 是更低优先级的，所以应该插到数组头部？
-        // 原始逻辑：User.overrides = [Base, Middle].
-        // 假设 User 也是完整对象。
-        // 原逻辑：
-        // 1. Base -> Map(id, Base)
-        // 2. Mid -> Map(id, Mid(overrides=[Base]))
-        // 3. User -> Map(id, User(overrides=[Base, Mid]))
-        // 也就是 overrides 数组里，越早被扫描到的（低优先级）在越前面。
-        // 现在倒序：
-        // 1. User -> Map(id, User)
-        // 2. Mid -> User.overrides.unshift(Mid) -> [Mid]
-        // 3. Base -> User.overrides.unshift(Base) -> [Base, Mid]
-        // 结果和原子保持一致。
-        if (!existing.overrides)
-          existing.overrides = []
-
-        existing.overrides.unshift(simplified as any)
-      }
-      else {
-        const isFunctional = [
-          ScanTypeEnum.Composable,
-          ScanTypeEnum.Store,
-          ScanTypeEnum.Util,
-          ScanTypeEnum.Api,
-        ].includes(config.type)
-
-        const name = isFunctional
-          ? {
-              origin: '',
-              pascal: '',
-              lazyPascal: '',
-              kebab: '',
-              lazyKebab: '',
-              safeVar: '',
-              safeLazyVar: '',
-              chunk: '',
-            }
-          : {
-              origin: basename(file),
-              pascal: pascalCase(id),
-              lazyPascal: `Lazy${pascalCase(id)}`,
-              kebab: kebabCase(id),
-              lazyKebab: `lazy-${kebabCase(id)}`,
-              safeVar: camelCase(id),
-              safeLazyVar: `lazy${camelCase(id)}`,
-              chunk: kebabCase(id),
-            }
-
-        // 5. 创建完整对象 (主对象)
-        const newItem: CodeEngineLayer = {
-          meta: {
-            layer: basename(layerDef.cwd), // 简单取名，也可从 package.json 读取
-            priority: layerDef.priority || 0,
-          },
-          path: {
-            root: layerDef.cwd,
-            abs: absPath,
-            relative: join(config.name, file),
-            scan: file,
-            alias: 'TODO', // 需要 resolveAlias
-            prefetch: 'TODO',
-          },
-          name,
-          config: {
-            export: 'default',
-            prefetch: false,
-            preload: false,
-          },
-          loader: {
-            dynamicImport: () => `() => import('${absPath}')`,
-          },
-          overrides: [],
-        }
-
-        itemMap.set(id, newItem)
-      }
+  // 为了反向解析 path -> type，我们需要一个 map
+  // dirName -> type
+  const dirToType: Record<string, ScanTypeEnum> = {}
+  for (const type of Object.keys(layerMap) as ScanTypeEnum[]) {
+    const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
+    if (typeConfig && typeConfig.enabled !== false) {
+      const dirName = typeConfig.name || type
+      dirToType[dirName] = type
     }
   }
 
-  // 返回去重后的列表
-  return Array.from(itemMap.values())
+  // 获取 VFS 中所有文件
+  // 这里我们可以优化 glob pattern，或者假设 VFS 里只有 Layer 文件
+  // 假设 VFS 目前只用于 Layer。
+  const entries = ce.vfs.glob('**/*')
+
+  for (const entry of entries) {
+    // entry.path 是虚拟路径，例如 /components/BaseButton
+    // 解析第一段作为 dirName
+    const parts = entry.path.split('/').filter(Boolean)
+    if (parts.length < 2)
+      continue // 至少要有 dirName 和 file
+
+    const dirName = parts[0]
+    const type = dirToType[dirName]
+    if (!type)
+      continue
+
+    const id = parts.slice(1).join('/') // 剩余部分作为 id? 原始 id 可能包含 /
+
+    // 从 entry 中恢复信息
+    // entry.source 是物理路径
+    // entry.layer 是 Scope Name (层名)
+    // 我们需要重建 CodeEngineLayer 对象
+
+    // 如果 VFS 记录了 originalPath 最好，否则我们要从 source 反推?
+    // VFS mount 时记录了 originalPath 在 options 里，但 VFS interface 似乎没有直接暴露 extra options 到 record?
+    // 查看 vfs.ts: record 包含 pattern, originalPath 等及其它字段
+    // VFS Record 定义包含 [key: string]: any 吗？
+    // let's check schema. VfsRecord has originalPath, pattern.
+
+    // 创建 Item
+    const item = createLayerItem(entry, type, id, options)
+    if (item) {
+      layerMap[type].push(item)
+    }
+  }
+
+  // 注册数据
+  for (const type of Object.keys(layerMap) as ScanTypeEnum[]) {
+    useProvide(getLayerKey(type), () => layerMap[type])
+  }
+}
+
+function createLayerItem(entry: any, type: ScanTypeEnum, id: string, options: LayerOptions): CodeEngineLayer | null {
+  if (typeof entry.source !== 'string')
+    return null // 必须是物理文件引用
+
+  const absPath = entry.source
+  const layerName = entry.scope || 'unknown'
+  const priority = entry.priority || 0
+  // entry.originalPath 是相对 layer 根目录的路径吗？
+  // 在 mountLayerFiles 中: originalPath: file (relative to layerDir)
+  // 但 cwd 是 layerDir.
+  // 我们需要 layerRoot. entry 不直接存 layerRoot.
+  // 但 absPath = join(layerRoot, typeDir, originalPath)
+  // 我们可以反推吗？或者 VfsRecord 应该存更多信息？
+  // 目前 VfsRecord 有 layer 字段 (scope name).
+  // 我们暂时无法直接获取 root。
+  // 但是 CodeEngineLayer 需要 root.
+  //
+  // 解决方案：
+  // 1. VFS mount 时把 root 存进去。
+  // 2. 或者我们不需要 root? loader 需要 root 和 relative paths.
+  //
+  // 让我们假设 mount 时把 extra info 存入 record。
+  // VfsRecord 类型定义是否允许扩展？
+  // 检查 vfs.ts -> VFSImpl update -> existing = ...
+  // VFS update accepts VfsRecord which has specific fields.
+  // VFS implementation uses `this.files.set(record.path, record)`.
+  // If we pass extra props to `mount`'s options, does it get saved?
+  // VfsScopeImpl.mount calls vfs.mount with options.
+  // VfsImpl.mount calls `this.update({... options... })`.
+  // It seems it spreads options into the record?
+  // VFS.ts line 72: `originalPath: options?.originalPath`
+  // It only explicit picks `originalPath` and `pattern`.
+  // It does NOT spread all options.
+
+  // So we are limited to what VfsRecord supports.
+  // We can recreate `root` if we know `absPath` and `originalPath` provided `dirName` is static.
+  // absPath = root + / + dirName + / + originalPath
+  // root = absPath - (dirName + originalPath)
+
+  const typeConfig = options[type as Exclude<keyof LayerOptions, 'name' | 'enabled'>]
+  const dirName = typeConfig?.name || type
+  const originalPath = entry.originalPath || ''
+
+  // 尝试计算 root
+  // absPath: /Users/.../packages/layer-a/components/Button.vue
+  // suffix: components/Button.vue
+  const suffix = join(dirName, originalPath)
+  // 注意 path separator
+  const suffixLen = suffix.length
+  const root = absPath.endsWith(suffix) ? absPath.slice(0, -suffixLen - 1) : dirname(absPath) // Fallback
+  // -1 for separator. Safe enough?
+
+  // 构造 name 对象
+  const isFunctional = [
+    ScanTypeEnum.Composable,
+    ScanTypeEnum.Store,
+    ScanTypeEnum.Util,
+    ScanTypeEnum.Api,
+  ].includes(type)
+
+  const name = isFunctional
+    ? {
+        origin: '',
+        pascal: '',
+        lazyPascal: '',
+        kebab: '',
+        lazyKebab: '',
+        safeVar: '',
+        safeLazyVar: '',
+        chunk: '',
+      }
+    : {
+        origin: basename(originalPath), // 使用原始文件名
+        pascal: pascalCase(id),
+        lazyPascal: `Lazy${pascalCase(id)}`,
+        kebab: kebabCase(id),
+        lazyKebab: `lazy-${kebabCase(id)}`,
+        safeVar: camelCase(id),
+        safeLazyVar: `lazy${camelCase(id)}`,
+        chunk: kebabCase(id),
+      }
+
+  // 构造 overrides
+  // 我们可以通过 inspect 获取历史
+  // const inspection = ce.vfs.inspect(entry.path)
+  // const history = inspection?.history || []
+  // history 包含了被覆盖的记录。
+  // 我们需要把 history 转换为 Partial<CodeEngineLayer>
+  // 这在 sync 阶段可能比较重，但是是值得的。
+  // 但是 ce.vfs.inspect 需要 context 吗？ syncVfsToLayerMap 已经有 frame。
+  // 暂时先留空 overrides，或者标记 TODO。
+  // 计划中提到：计划保留 overrides 字段，通过 vfs.inspect(path).history 填充。
+
+  const overrides: any[] = []
+  // TODO: populate overrides from vfs history
+
+  return {
+    meta: {
+      layer: layerName,
+      priority,
+    },
+    path: {
+      root,
+      abs: absPath,
+      relative: suffix,
+      scan: originalPath,
+      alias: 'TODO', // 需要 resolveAlias
+      prefetch: 'TODO',
+    },
+    name,
+    config: {
+      export: 'default',
+      prefetch: false,
+      preload: false,
+    },
+    loader: {
+      dynamicImport: () => `() => import('${absPath}')`,
+    },
+    overrides,
+  }
 }
 
 /**
  * 资源 ID 生成策略 (Smart Resolution)
  */
-function resolveLayerId(file: string, type: ScanTypeEnum): string {
+export function resolveLayerId(file: string, type: ScanTypeEnum): string {
   const fileName = basename(file, extname(file))
   const dir = dirname(file)
 

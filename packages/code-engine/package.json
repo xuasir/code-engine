@@ -44,6 +44,7 @@
     "fast-glob": "catalog:prod",
     "hookable": "catalog:prod",
     "micromatch": "catalog:prod",
+    "pathe": "catalog:prod",
     "pkg-types": "catalog:prod",
     "scule": "catalog:prod"
   },

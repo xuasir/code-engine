@@ -40,9 +40,15 @@
     "dotenv": "catalog:prod",
     "dotenv-expand": "catalog:prod",
     "exsolve": "catalog:prod",
+    "hookable": "catalog:prod",
     "jiti": "catalog:prod",
+    "micromatch": "catalog:prod",
+    "ohash": "catalog:prod",
     "pathe": "catalog:prod",
     "unctx": "catalog:prod",
     "untyped": "catalog:prod"
+  },
+  "devDependencies": {
+    "@types/micromatch": "catalog:types"
   }
 }

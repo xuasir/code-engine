@@ -121,6 +121,9 @@ catalogs:
     micromatch:
       specifier: ^4.0.8
       version: 4.0.8
+    ohash:
+      specifier: ^1.1.4
+      version: 1.1.6
     pathe:
       specifier: ^2.0.3
       version: 2.0.3
@@ -260,6 +263,9 @@ importers:
       micromatch:
         specifier: catalog:prod
         version: 4.0.8
+      pathe:
+        specifier: catalog:prod
+        version: 2.0.3
       pkg-types:
         specifier: catalog:prod
         version: 2.3.0
@@ -294,9 +300,18 @@ importers:
       exsolve:
         specifier: catalog:prod
         version: 1.0.7
+      hookable:
+        specifier: catalog:prod
+        version: 5.5.3
       jiti:
         specifier: catalog:prod
         version: 2.5.1
+      micromatch:
+        specifier: catalog:prod
+        version: 4.0.8
+      ohash:
+        specifier: catalog:prod
+        version: 1.1.6
       pathe:
         specifier: catalog:prod
         version: 2.0.3
@@ -306,6 +321,10 @@ importers:
       untyped:
         specifier: catalog:prod
         version: 2.0.0
+    devDependencies:
+      '@types/micromatch':
+        specifier: catalog:types
+        version: 4.0.10
 
   packages/schema:
     dependencies:
@@ -2551,6 +2570,9 @@ packages:
 
   ofetch@1.4.1:
     resolution: {integrity: sha512-QZj2DfGplQAr2oj9KzceK9Hwz6Whxazmn85yYeVuS3u9XTMOGMRx0kO95MQ+vLsj/S/NwBDMMLU5hpxvI6Tklw==}
+
+  ohash@1.1.6:
+    resolution: {integrity: sha512-TBu7PtV8YkAZn0tSxobKY2n2aAQva936lhRrj6957aDaCf9IEtqsKbgMzXE/F/sjqYOwmrukeORHNLe5glk7Cg==}
 
   ohash@2.0.11:
     resolution: {integrity: sha512-RdR9FQrFwNBNXAr4GixM8YaRZRJ5PUWbKYbE5eOsrwAjJW0q2REGcf79oYPsLyskQCZG1PLN+S/K1V00joZAoQ==}
@@ -5998,6 +6020,8 @@ snapshots:
       destr: 2.0.5
       node-fetch-native: 1.6.7
       ufo: 1.6.1
+
+  ohash@1.1.6: {}
 
   ohash@2.0.11: {}
 

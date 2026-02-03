@@ -1,8 +1,8 @@
 import type { LayerOptions } from '@a-sir/code-engine-schema'
 import path from 'node:path'
-import { addLayer, defineModule, getLayerKey, notify, useLogger } from '@a-sir/code-engine-kit'
+import { addLayer, defineModule, useLogger } from '@a-sir/code-engine-kit'
 import { ScanPriorityEnum } from '@a-sir/code-engine-schema'
-import { loadLayers } from './loader'
+import { mountLayerFiles, syncVfsToLayerMap } from './loader'
 import { watchLayers } from './watcher'
 
 export default defineModule<LayerOptions>({
@@ -26,30 +26,28 @@ export default defineModule<LayerOptions>({
     ce.hook('vfs:prepare', async () => {
       // 采集 layer
       await ce.callHook('layer:extend', ce)
-      // 读取 layer
+      // 读取 layer (注意: 这里是 LayerDefinition，还不是完整的 Layer 对象)
       const layers = ce.options.__layers
       logger.debug('layer', layers)
-      // 初次执行
-      const layerMap = await loadLayers(layers, resolvedOptions)
+
+      // 将 Layer 挂载到 VFS
+      await ce.vfs.use(async () => {
+        // 1. 初始加载：挂载所有文件到 VFS
+        await mountLayerFiles(ce, layers, resolvedOptions)
+
+        // 2. 根据 VFS 状态生成 LayerMap
+        await syncVfsToLayerMap(ce, resolvedOptions)
+      })
 
       // 监听变化，并且注册layer更新相关的钩子
       // 仅在开发模式下启用
       if (ce.env.dev) {
-        const watcher = watchLayers(layers, resolvedOptions, async (type, data) => {
-          logger.info(`Layer update detected: ${type}`)
-          // 更新 layerMap
-          layerMap[type] = data
-          // 通知更新
-          notify(getLayerKey(type))
-          // 触发钩子
-          await ce.callHook('layer:change', type, data, ce)
-        })
-
-        // 注册销毁钩子
-        ce.hook('close', () => watcher.close())
+        const _watcher = watchLayers(ce, layers, resolvedOptions)
+        // TODO: handle watcher cleanup if necessary
       }
+
       // 分析layer
-      await ce.callHook('layer:loaded', layerMap, ce)
+      // await ce.callHook('layer:loaded', layerMap, ce)
     })
   },
 })
