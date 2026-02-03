@@ -14,7 +14,7 @@
     "release": "pnpm -r --filter ./packages/** publish",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
-    "prepare": "simple-git-hooks"
+    "prepare": "npx simple-git-hooks"
   },
   "devDependencies": {
     "@a-sir/code-engine": "workspace:*",
@@ -33,7 +33,7 @@
     "vitest": "catalog:testing"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm lint-staged"
+    "pre-commit": "pnpm i --frozen-lockfile --ignore-scripts --offline && npx lint-staged"
   },
   "lint-staged": {
     "*": "eslint --fix"
