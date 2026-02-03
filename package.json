@@ -1,16 +1,16 @@
 {
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "scripts": {
-    "build": "nr -r build",
-    "dev": "nr -r dev",
+    "build": "pnpm -r --filter ./packages/** run build",
+    "dev": "pnpm -r --filter ./packages/** run dev",
     "lint": "eslint --cache .",
     "prepublishOnly": "nr build",
     "docs": "pnpm -C docs run docs:dev",
     "docs:build": "pnpm -C docs run docs:build",
-    "release": "bumpp -r && pnpm -r publish",
+    "release": "bumpp -r && pnpm -r --filter ./packages/** publish",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "prepare": "simple-git-hooks"
