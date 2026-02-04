@@ -4,7 +4,7 @@ import { loadCodeEngine } from '../../core'
 export default defineCommand({
   meta: {
     name: 'prepare',
-    description: 'Prepare .code-engine for development/build',
+    description: 'Prepare .vona-js for development/build',
   },
   args: {
     mode: {

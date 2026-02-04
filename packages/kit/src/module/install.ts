@@ -1,4 +1,4 @@
-import type { CodeEngine, CodeEngineModule, ModuleOptions } from '@a-sir/code-engine-schema'
+import type { CodeEngine, CodeEngineModule, ModuleOptions } from '@vona-js/schema'
 import { pathToFileURL } from 'node:url'
 import { resolveModulePath } from 'exsolve'
 import { createJiti } from 'jiti'

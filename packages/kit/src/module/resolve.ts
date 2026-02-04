@@ -1,4 +1,4 @@
-import type { CodeEngine, CodeEngineModule, ModuleOptions } from '@a-sir/code-engine-schema'
+import type { CodeEngine, CodeEngineModule, ModuleOptions } from '@vona-js/schema'
 import { pathToFileURL } from 'node:url'
 import { resolveModulePath } from 'exsolve'
 
@@ -16,8 +16,8 @@ export async function resolveModules(codeEngine: CodeEngine): Promise<{
   const paths = new Set<string>()
   const resolvedModulePaths = new Set<string>()
 
-  // 定义模块名称的正则表达式，用于匹配以 '@a-sir/code-engine-module-' 开头的模块
-  const moduleReg = /^@a-sir\/code-engine-module-/
+  // 定义模块名称的正则表达式，用于匹配以 '@vona-js/module-' 开头的模块
+  const moduleReg = /^@vona-js\/vona-js-module-/
   // 添加内部模块
   const internalModules = codeEngine.options.__internalModules
   // 获取配置中的模块列表

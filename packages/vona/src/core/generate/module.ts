@@ -1,5 +1,6 @@
+import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { defineModule, useLogger } from '@a-sir/code-engine-kit'
+import { defineModule, useLogger } from '@vona-js/kit'
 
 export default defineModule({
   meta: {
@@ -22,7 +23,7 @@ export default defineModule({
 
       // 写入文件
       const start = performance.now()
-      await ce.vfs.root.write(ce.options.__rootDir)
+      await ce.vfs.root.write(path.join(ce.options.__rootDir, '.vona-js'))
       const end = performance.now()
       logger.debug('write files done, cost: %dms', end - start)
 

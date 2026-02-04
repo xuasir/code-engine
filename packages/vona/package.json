@@ -1,10 +1,13 @@
 {
-  "name": "@a-sir/code-engine",
+  "name": "vona-js",
   "type": "module",
   "version": "0.0.1",
   "description": "_description_",
   "author": "xuasir",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xuasir/code-engine.git"
@@ -24,7 +27,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "code-engine": "dist/cli/index.mjs"
+    "vona": "dist/cli/index.mjs"
   },
   "files": [
     "dist"
@@ -32,12 +35,11 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "prepublishOnly": "nr build",
-    "start": "tsx src/index.ts"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@a-sir/code-engine-kit": "workspace:*",
-    "@a-sir/code-engine-schema": "workspace:*",
+    "@vona-js/kit": "workspace:*",
+    "@vona-js/schema": "workspace:*",
     "chokidar": "catalog:prod",
     "citty": "catalog:prod",
     "es-module-lexer": "catalog:prod",

@@ -1,4 +1,4 @@
-import type { CodeEngineLayer, CodeEngineLayerDefinition, ScanTypeEnum } from '@a-sir/code-engine-schema'
+import type { CodeEngineLayer, CodeEngineLayerDefinition, ScanTypeEnum } from '@vona-js/schema'
 import type { InjectionKey } from './reactive'
 import { useCodeEngine } from './context'
 import { defineKey } from './reactive'

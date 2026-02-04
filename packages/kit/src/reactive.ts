@@ -1,4 +1,4 @@
-import type { InjectionKey } from '@a-sir/code-engine-schema'
+import type { InjectionKey } from '@vona-js/schema'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { useCodeEngine } from './context'
 

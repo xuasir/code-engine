@@ -8,7 +8,7 @@ import type {
   VfsSetup,
   VfsSource,
   VfsTemplate,
-} from '@a-sir/code-engine-schema'
+} from '@vona-js/schema'
 import { createHooks } from 'hookable'
 import micromatch from 'micromatch'
 import { hash } from 'ohash'

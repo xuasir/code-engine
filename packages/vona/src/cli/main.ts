@@ -1,13 +1,13 @@
-import { useLogger } from '@a-sir/code-engine-kit'
+import { useLogger } from '@vona-js/kit'
 import { defineCommand } from 'citty'
 import { description, version } from '../../package.json'
 import commands from './commands'
 
-const logger = useLogger('code-engine:cli')
+const logger = useLogger('vona-js:cli')
 
 export const main = defineCommand({
   meta: {
-    name: 'code-engine',
+    name: 'vona',
     description,
     version,
   },
@@ -20,6 +20,6 @@ export const main = defineCommand({
   subCommands: commands,
   setup(ctx) {
     const command = ctx.args._[0]
-    logger.debug(`running \`code-engine ${command}\` command`)
+    logger.debug(`running \`ce ${command}\` command`)
   },
 })

@@ -1,4 +1,4 @@
-import type { CodeEngine, CodeEngineModule, CodeEngineOptions, ModuleDefinition, ModuleOptions, ModuleSetupInstallResult, ModuleSetupReturn } from '@a-sir/code-engine-schema'
+import type { CodeEngine, CodeEngineModule, CodeEngineOptions, ModuleDefinition, ModuleOptions, ModuleSetupInstallResult, ModuleSetupReturn } from '@vona-js/schema'
 import { performance } from 'node:perf_hooks'
 import defu from 'defu'
 import { applyDefaults } from 'untyped'

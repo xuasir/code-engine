@@ -1,1 +1,1 @@
-# @a-sir/code-engine-schema
+# @vona-js/schema

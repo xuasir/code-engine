@@ -1,8 +1,8 @@
-import type { CodeEngineEnv } from '@a-sir/code-engine-schema'
+import type { CodeEngineEnv } from '@vona-js/schema'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { CodeEngineMode } from '@a-sir/code-engine-schema'
+import { CodeEngineMode } from '@vona-js/schema'
 import dotenv from 'dotenv'
 import dotenvExpand from 'dotenv-expand'
 

@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "predev": "code-engine prepare",
-    "prebuild": "code-engine prepare",
+    "predev": "vona prepare",
+    "prebuild": "vona prepare",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
@@ -14,8 +14,8 @@
     "vue": "catalog:frontend"
   },
   "devDependencies": {
-    "@a-sir/code-engine": "workspace:*",
     "@vitejs/plugin-vue": "catalog:build",
-    "vite": "catalog:cli"
+    "vite": "catalog:cli",
+    "vona-js": "workspace:*"
   }
 }

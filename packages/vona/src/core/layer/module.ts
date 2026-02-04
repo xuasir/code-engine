@@ -1,7 +1,7 @@
-import type { LayerOptions } from '@a-sir/code-engine-schema'
+import type { LayerOptions } from '@vona-js/schema'
 import path from 'node:path'
-import { addLayer, defineModule, useLogger } from '@a-sir/code-engine-kit'
-import { ScanPriorityEnum } from '@a-sir/code-engine-schema'
+import { addLayer, defineModule, useLogger } from '@vona-js/kit'
+import { ScanPriorityEnum } from '@vona-js/schema'
 import { mountLayerFiles, syncVfsToLayerMap } from './loader'
 import { watchLayers } from './watcher'
 

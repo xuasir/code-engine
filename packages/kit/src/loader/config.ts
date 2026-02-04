@@ -1,4 +1,4 @@
-import type { CodeEngineConfig, CodeEngineMode, CodeEngineOptions } from '@a-sir/code-engine-schema'
+import type { CodeEngineConfig, CodeEngineMode, CodeEngineOptions } from '@vona-js/schema'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { loadConfig } from 'c12'
@@ -66,10 +66,10 @@ export async function loadCodeEngineConfig(options: LoadConfigOptions): Promise<
 async function loadSchema(cwd: string): Promise<any> {
   const url = pathToFileURL(`${cwd}/`)
   const urls: Array<URL | string> = [url]
-  const corePath = resolveModuleURL('@a-sir/code-engine', { try: true, from: url })
+  const corePath = resolveModuleURL('@vona-js/', { try: true, from: url })
   if (corePath) {
     urls.unshift(corePath)
   }
-  const schemaPath = resolveModuleURL('@a-sir/code-engine-schema', { try: true, from: urls }) ?? '@a-sir/code-engine-schema'
+  const schemaPath = resolveModuleURL('@vona-js/schema', { try: true, from: urls }) ?? '@vona-js/schema'
   return await import(schemaPath).then(r => r.CodeEngineConfigSchema)
 }

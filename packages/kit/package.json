@@ -1,10 +1,13 @@
 {
-  "name": "@a-sir/code-engine-kit",
+  "name": "@vona-js/kit",
   "type": "module",
   "version": "0.0.1",
   "description": "_description_",
   "author": "xuasir",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xuasir/code-engine.git"
@@ -29,11 +32,10 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "prepublishOnly": "nr build",
-    "start": "tsx src/index.ts"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@a-sir/code-engine-schema": "workspace:*",
+    "@vona-js/schema": "workspace:*",
     "c12": "catalog:prod",
     "consola": "catalog:prod",
     "defu": "catalog:prod",

@@ -1,4 +1,4 @@
-import type { CodeEngine } from '@a-sir/code-engine-schema'
+import type { CodeEngine } from '@vona-js/schema'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createContext } from 'unctx'
 
