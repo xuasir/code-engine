@@ -1,22 +1,22 @@
 import type { SchemaDefinition } from 'untyped'
-import type { CodeEngineMode } from './env'
-import type { CodeEngineLayerDefinition } from './layer'
-import type { CodeEngineModule, ModuleMeta, ModuleOptions, ModuleSetupInstallResult } from './module'
+import type { VonaMode } from './env'
+import type { VonaLayerDefinition } from './layer'
+import type { ModuleMeta, ModuleOptions, ModuleSetupInstallResult, VonaModule } from './module'
 import type { ConfigSchema } from './schema'
 
 // eslint-disable-next-line ts/no-unsafe-function-type
 type DeepPartial<T> = T extends Function ? T : T extends Record<string, any> ? { [P in keyof T]?: DeepPartial<T[P]> } : T
 
-export interface CodeEngineConfig extends DeepPartial<ConfigSchema> {
+export interface VonaConfig extends DeepPartial<ConfigSchema> {
   /** 配置 */
   $schema?: SchemaDefinition
 }
 
-export interface CodeEngineOptions extends ConfigSchema {
+export interface VonaOptions extends ConfigSchema {
   /** 项目根目录 */
   __rootDir: string
   /** 模式 */
-  __mode: CodeEngineMode
+  __mode: VonaMode
   /** 当前命令 */
   __command?: {
     name: string
@@ -25,11 +25,11 @@ export interface CodeEngineOptions extends ConfigSchema {
   /**
    * 代码工程的层
    */
-  __layers: CodeEngineLayerDefinition[]
+  __layers: VonaLayerDefinition[]
   /**
    * 内部模块
    */
-  __internalModules: Array<CodeEngineModule | [CodeEngineModule, ModuleOptions]>
+  __internalModules: Array<VonaModule | [VonaModule, ModuleOptions]>
   /**
    * 加载过的模块
    */
@@ -39,7 +39,7 @@ export interface CodeEngineOptions extends ConfigSchema {
    */
   __installedModules: Array<{
     meta: ModuleMeta
-    module: CodeEngineModule
+    module: VonaModule
     timings: ModuleSetupInstallResult['timings']
   }>
   /** 配置 */

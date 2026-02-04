@@ -97,7 +97,7 @@ export interface LayerOptions {
 }
 
 // 层定义
-export interface CodeEngineLayerDefinition {
+export interface VonaLayerDefinition {
   /** 层工作目录 */
   cwd: string
   /** 层优先级 @default 0 */
@@ -107,7 +107,7 @@ export interface CodeEngineLayerDefinition {
 }
 
 // 扫描后的层数据
-export interface CodeEngineLayer {
+export interface VonaLayer {
   /** 元数据 */
   meta: {
     /** Layer 名称 (e.g. "base") */
@@ -172,5 +172,5 @@ export interface CodeEngineLayer {
   [key: string]: any
 
   /** 覆盖历史：记录被当前层覆盖的下层资源 */
-  overrides?: Partial<CodeEngineLayer>[]
+  overrides?: Partial<VonaLayer>[]
 }

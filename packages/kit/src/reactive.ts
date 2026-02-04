@@ -1,6 +1,6 @@
 import type { InjectionKey } from '@vona-js/schema'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { useCodeEngine } from './context'
+import { useVona } from './context'
 
 export type { InjectionKey }
 
@@ -141,7 +141,7 @@ export function createReactiveRegistry(): ReactiveRegistry {
  * 供给数据
  */
 export function useProvide<T>(key: InjectionKey<T>, value: T | (() => T)): void {
-  const ce = useCodeEngine()
+  const ce = useVona()
   ce.provide(key, value)
 }
 
@@ -149,7 +149,7 @@ export function useProvide<T>(key: InjectionKey<T>, value: T | (() => T)): void 
  * 注入数据
  */
 export function useInject<T>(key: InjectionKey<T>): T | undefined {
-  const ce = useCodeEngine()
+  const ce = useVona()
   return ce.get(key)
 }
 
@@ -157,7 +157,7 @@ export function useInject<T>(key: InjectionKey<T>): T | undefined {
  * 通知数据变更
  */
 export function notify(key: InjectionKey<any>): void {
-  const ce = useCodeEngine()
+  const ce = useVona()
   ce.notify(key)
 }
 
@@ -165,6 +165,6 @@ export function notify(key: InjectionKey<any>): void {
  * 运行副作用 (Entry Point)
  */
 export function runEffect(fn: () => any): any {
-  const ce = useCodeEngine()
+  const ce = useVona()
   return ce.runEffect(fn)
 }

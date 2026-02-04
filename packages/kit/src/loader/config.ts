@@ -1,4 +1,4 @@
-import type { CodeEngineConfig, CodeEngineMode, CodeEngineOptions } from '@vona-js/schema'
+import type { VonaConfig, VonaMode, VonaOptions } from '@vona-js/schema'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { loadConfig } from 'c12'
@@ -8,33 +8,33 @@ import { applyDefaults } from 'untyped'
 
 export interface LoadConfigOptions {
   cwd?: string
-  mode?: CodeEngineMode | string
+  mode?: VonaMode | string
 }
 
-export async function loadCodeEngineConfig(options: LoadConfigOptions): Promise<CodeEngineOptions> {
+export async function loadVonaConfig(options: LoadConfigOptions): Promise<VonaOptions> {
   const root = options.cwd || process.cwd()
 
   const globalSelf = globalThis as any
-  globalSelf.defineCodeEngineConfig = (c: any) => c
+  globalSelf.defineVonaConfig = (c: any) => c
 
-  // 1. 加载默认配置 code-engine.config
-  const { configFile, config: baseConfig } = await loadConfig<CodeEngineConfig>({
+  // 1. 加载默认配置 vona.config
+  const { configFile, config: baseConfig } = await loadConfig<VonaConfig>({
     cwd: root,
-    name: 'code-engine',
-    configFile: 'code-engine.config',
+    name: 'vona',
+    configFile: 'vona.config',
     rcFile: false,
     globalRc: false,
     dotenv: true,
     extend: { extendKey: ['extends'] },
   })
 
-  // 2. 如果指定了 mode，加载 mode 对应的配置 code-engine.config.development
-  let modeConfig: CodeEngineConfig = {}
+  // 2. 如果指定了 mode，加载 mode 对应的配置 vona.config.development
+  let modeConfig: VonaConfig = {}
   if (options.mode) {
-    const { config } = await loadConfig<CodeEngineConfig>({
+    const { config } = await loadConfig<VonaConfig>({
       cwd: root,
-      name: 'code-engine',
-      configFile: `code-engine.config.${options.mode}`,
+      name: 'vona',
+      configFile: `vona.config.${options.mode}`,
       rcFile: false,
       globalRc: false,
       dotenv: true,
@@ -43,22 +43,22 @@ export async function loadCodeEngineConfig(options: LoadConfigOptions): Promise<
     modeConfig = config || {}
   }
 
-  delete globalSelf.defineCodeEngineConfig
+  delete globalSelf.defineVonaConfig
 
   // 3. 合并配置
-  const codeEngineConfig = defu(modeConfig, baseConfig) as CodeEngineConfig
+  const vonaConfig = defu(modeConfig, baseConfig) as VonaConfig
 
   // 填充默认字段
-  codeEngineConfig.__configFile = configFile!
+  vonaConfig.__configFile = configFile!
 
   // 加载 schema
-  const CodeEngineConfigSchema = await loadSchema(root);
+  const VonaConfigSchema = await loadSchema(root);
 
   // 初始化 layers
-  (codeEngineConfig as any).__layers = []
+  (vonaConfig as any).__layers = []
 
   // 附加默认值
-  const resolvedConfig = await applyDefaults(CodeEngineConfigSchema, codeEngineConfig as any) as unknown as CodeEngineOptions
+  const resolvedConfig = await applyDefaults(VonaConfigSchema, vonaConfig as any) as unknown as VonaOptions
 
   return resolvedConfig
 }
@@ -71,5 +71,5 @@ async function loadSchema(cwd: string): Promise<any> {
     urls.unshift(corePath)
   }
   const schemaPath = resolveModuleURL('@vona-js/schema', { try: true, from: urls }) ?? '@vona-js/schema'
-  return await import(schemaPath).then(r => r.CodeEngineConfigSchema)
+  return await import(schemaPath).then(r => r.VonaConfigSchema)
 }

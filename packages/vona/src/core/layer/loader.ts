@@ -1,4 +1,4 @@
-import type { CodeEngine, CodeEngineLayer, CodeEngineLayerDefinition, LayerOptions } from '@vona-js/schema'
+import type { LayerOptions, Vona, VonaLayer, VonaLayerDefinition } from '@vona-js/schema'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { getLayerKey, useProvide } from '@vona-js/kit'
 import { ScanTypeEnum } from '@vona-js/schema'
@@ -19,11 +19,11 @@ export const defaultPatterns: Record<ScanTypeEnum, string[]> = {
 
 /**
  * 将 Layer 文件挂载到 VFS
- * @param ce CodeEngine上下文
+ * @param ce Vona上下文
  * @param layers Layer定义列表
  * @param options Layer选项
  */
-export async function mountLayerFiles(ce: CodeEngine, layers: CodeEngineLayerDefinition[], options: LayerOptions): Promise<void> {
+export async function mountLayerFiles(ce: Vona, layers: VonaLayerDefinition[], options: LayerOptions): Promise<void> {
   // 遍历所有 Layer
   for (const layerDef of layers) {
     // 为每一层创建一个 Scope，使用 Layer 的优先级
@@ -94,11 +94,11 @@ export async function mountLayerFiles(ce: CodeEngine, layers: CodeEngineLayerDef
 
 /**
  * 从 VFS 同步 LayerMap
- * @param ce CodeEngine上下文
+ * @param ce Vona上下文
  * @param options Layer选项
  */
-export async function syncVfsToLayerMap(ce: CodeEngine, options: LayerOptions): Promise<void> {
-  const layerMap: Record<ScanTypeEnum, CodeEngineLayer[]> = {
+export async function syncVfsToLayerMap(ce: Vona, options: LayerOptions): Promise<void> {
+  const layerMap: Record<ScanTypeEnum, VonaLayer[]> = {
     [ScanTypeEnum.Api]: [],
     [ScanTypeEnum.Component]: [],
     [ScanTypeEnum.Composable]: [],
@@ -142,7 +142,7 @@ export async function syncVfsToLayerMap(ce: CodeEngine, options: LayerOptions): 
     // 从 entry 中恢复信息
     // entry.source 是物理路径
     // entry.layer 是 Scope Name (层名)
-    // 我们需要重建 CodeEngineLayer 对象
+    // 我们需要重建 VonaLayer 对象
 
     // 如果 VFS 记录了 originalPath 最好，否则我们要从 source 反推?
     // VFS mount 时记录了 originalPath 在 options 里，但 VFS interface 似乎没有直接暴露 extra options 到 record?
@@ -163,7 +163,7 @@ export async function syncVfsToLayerMap(ce: CodeEngine, options: LayerOptions): 
   }
 }
 
-function createLayerItem(entry: any, type: ScanTypeEnum, id: string, options: LayerOptions): CodeEngineLayer | null {
+function createLayerItem(entry: any, type: ScanTypeEnum, id: string, options: LayerOptions): VonaLayer | null {
   if (typeof entry.source !== 'string')
     return null // 必须是物理文件引用
 
@@ -178,7 +178,7 @@ function createLayerItem(entry: any, type: ScanTypeEnum, id: string, options: La
   // 我们可以反推吗？或者 VfsRecord 应该存更多信息？
   // 目前 VfsRecord 有 layer 字段 (scope name).
   // 我们暂时无法直接获取 root。
-  // 但是 CodeEngineLayer 需要 root.
+  // 但是 VonaLayer 需要 root.
   //
   // 解决方案：
   // 1. VFS mount 时把 root 存进去。
@@ -250,7 +250,7 @@ function createLayerItem(entry: any, type: ScanTypeEnum, id: string, options: La
   // const inspection = ce.vfs.inspect(entry.path)
   // const history = inspection?.history || []
   // history 包含了被覆盖的记录。
-  // 我们需要把 history 转换为 Partial<CodeEngineLayer>
+  // 我们需要把 history 转换为 Partial<VonaLayer>
   // 这在 sync 阶段可能比较重，但是是值得的。
   // 但是 ce.vfs.inspect 需要 context 吗？ syncVfsToLayerMap 已经有 frame。
   // 暂时先留空 overrides，或者标记 TODO。

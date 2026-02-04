@@ -1,22 +1,22 @@
 import type { Schema, SchemaDefinition } from 'untyped'
-import type { CodeEngine } from './engine'
-import type { CodeEngineLayer, ScanTypeEnum } from './layer'
+import type { Vona } from './engine'
+import type { ScanTypeEnum, VonaLayer } from './layer'
 
 export type HookResult = Promise<void> | void
 
-export interface CodeEngineHooks {
+export interface VonaHooks {
   /**
    * 代码引擎准备就绪
    * @param ce 代码引擎实例
    * @returns
    */
-  'ready': (ce: CodeEngine) => HookResult
+  'ready': (ce: Vona) => HookResult
   /**
    * 代码引擎关闭
    * @param ce 代码引擎实例
    * @returns
    */
-  'close': (ce: CodeEngine) => HookResult
+  'close': (ce: Vona) => HookResult
 
   // 插件
   /**
@@ -36,19 +36,19 @@ export interface CodeEngineHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'vfs:prepare': (ce: CodeEngine) => HookResult
+  'vfs:prepare': (ce: Vona) => HookResult
   /**
    * 代码引擎应用 VFS 生成之后
    * @param ce 代码引擎实例
    * @returns
    */
-  'vfs:generated': (ce: CodeEngine) => HookResult
+  'vfs:generated': (ce: Vona) => HookResult
   // /**
   //  * 代码引擎写入类型声明文件
   //  * @param ce 代码引擎实例
   //  * @returns
   //  */
-  // 'prepare:types': (ce: CodeEngine) => HookResult
+  // 'prepare:types': (ce: Vona) => HookResult
 
   // layer 相关
   /**
@@ -56,13 +56,13 @@ export interface CodeEngineHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:extend': (ce: CodeEngine) => HookResult
+  'layer:extend': (ce: Vona) => HookResult
   /**
    * layer 加载完成
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:loaded': (layerMap: Record<ScanTypeEnum, CodeEngineLayer[]>, ce: CodeEngine) => HookResult
+  'layer:loaded': (layerMap: Record<ScanTypeEnum, VonaLayer[]>, ce: Vona) => HookResult
 
   /**
    * layer 变更
@@ -71,7 +71,7 @@ export interface CodeEngineHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:change': (type: ScanTypeEnum, layers: CodeEngineLayer[], ce: CodeEngine) => HookResult
+  'layer:change': (type: ScanTypeEnum, layers: VonaLayer[], ce: Vona) => HookResult
 
   // 连接构建引擎
   /**
@@ -79,13 +79,13 @@ export interface CodeEngineHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'vite:config': (ce: CodeEngine) => HookResult
+  'vite:config': (ce: Vona) => HookResult
   /**
    * 代码引擎应用写入 rspack 配置文件
    * @param ce 代码引擎实例
    * @returns
    */
-  'rspack:config': (ce: CodeEngine) => HookResult
+  'rspack:config': (ce: Vona) => HookResult
 
   // 配置文件扩展
   // Schema
@@ -117,4 +117,4 @@ export interface CodeEngineHooks {
 /**
  * 代码引擎内部钩子名称
  */
-export type CodeEngineInternalHookName = keyof CodeEngineHooks
+export type VonaInternalHookName = keyof VonaHooks

@@ -12,7 +12,7 @@ export default defineModule<LayerOptions>({
     configKey: 'layer',
   },
   setup(resolvedOptions, ce) {
-    const logger = useLogger('codeEngine:layer')
+    const logger = useLogger('vona:layer')
 
     // 添加 user layer
     if (resolvedOptions.enabled) {

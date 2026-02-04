@@ -15,7 +15,7 @@ export type EffectFn = () => any
 
 /**
  * 响应式上下文接口
- * CodeEngine 实现此接口以提供响应式能力
+ * Vona 实现此接口以提供响应式能力
  */
 export interface ReactiveContext {
   /**

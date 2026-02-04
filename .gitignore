@@ -11,7 +11,9 @@ node_modules
 temp
 cache
 .eslintcache
-.code-engine
+
+# vona-js
+.vona
 
 # AI
 .agents

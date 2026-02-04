@@ -1,11 +1,11 @@
 import type { ConsolaInstance, ConsolaOptions } from 'consola'
 import { consola, LogLevels } from 'consola'
-import { tryUseCodeEngine } from './context'
+import { tryUseVona } from './context'
 
 export const logger = consola
 
 export function useLogger(tag?: string, options: Partial<ConsolaOptions> = {}): ConsolaInstance {
-  const ce = tryUseCodeEngine()
+  const ce = tryUseVona()
   if (ce?.options.debug) {
     options.level = LogLevels.debug
   }

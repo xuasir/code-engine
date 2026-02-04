@@ -1,4 +1,4 @@
-import type { CodeEngine, CodeEngineLayerDefinition, LayerOptions, ScanTypeEnum } from '@vona-js/schema'
+import type { LayerOptions, ScanTypeEnum, Vona, VonaLayerDefinition } from '@vona-js/schema'
 import type { FSWatcher } from 'chokidar'
 import { basename, join, relative } from 'node:path'
 import { debounce } from '@vona-js/kit'
@@ -11,8 +11,8 @@ import { defaultPatterns, resolveLayerId, syncVfsToLayerMap } from './loader'
  * 监听文件变化并触发 VFS 更新。
  */
 export function watchLayers(
-  ce: CodeEngine,
-  layers: CodeEngineLayerDefinition[],
+  ce: Vona,
+  layers: VonaLayerDefinition[],
   options: LayerOptions,
 ): FSWatcher {
   // 0. 预排序 Layer (按路径长度降序)
@@ -118,11 +118,11 @@ export function watchLayers(
  */
 function resolvePathInfo(
   filePath: string,
-  sortedLayers: CodeEngineLayerDefinition[],
+  sortedLayers: VonaLayerDefinition[],
   typeConfigs: Record<ScanTypeEnum, { dirName: string, patterns: string[] }>,
-): { layerDef: CodeEngineLayerDefinition, type: ScanTypeEnum, relPath: string } | null {
+): { layerDef: VonaLayerDefinition, type: ScanTypeEnum, relPath: string } | null {
   // 1. 匹配 Layer
-  let layerDef: CodeEngineLayerDefinition | null = null
+  let layerDef: VonaLayerDefinition | null = null
   for (const layer of sortedLayers) {
     if (filePath.startsWith(layer.cwd)) {
       layerDef = layer

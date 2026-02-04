@@ -1,10 +1,10 @@
-export enum CodeEngineMode {
+export enum VonaMode {
   DEVELOPMENT = 'development',
   PRODUCTION = 'production',
   TEST = 'test',
 }
-export interface CodeEngineEnv {
-  mode: CodeEngineMode
+export interface VonaEnv {
+  mode: VonaMode
   dev: boolean
   prod: boolean
   test: boolean

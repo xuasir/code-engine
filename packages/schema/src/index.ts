@@ -1,4 +1,4 @@
-export { default as CodeEngineConfigSchema } from './config'
+export { default as VonaConfigSchema } from './config'
 
 // 类型
 export * from './types/config'

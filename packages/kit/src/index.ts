@@ -1,6 +1,6 @@
-export { getCodeEngineCtx, runWithCodeEngineContext, setCodeEngineCtx, tryUseCodeEngine, useCodeEngine } from './context'
+export { getVonaCtx, runWithVonaContext, setVonaCtx, tryUseVona, useVona } from './context'
 export { addLayer, getLayerKey, useLayer } from './layer'
-export { loadCodeEngineConfig } from './loader/config'
+export { loadVonaConfig } from './loader/config'
 export { createEnv, loadEnv } from './loader/env'
 export { useLogger } from './logger'
 export { defineModule } from './module/define'

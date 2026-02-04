@@ -1,12 +1,12 @@
-import type { CodeEngineEnv } from '@vona-js/schema'
+import type { VonaEnv } from '@vona-js/schema'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { CodeEngineMode } from '@vona-js/schema'
+import { VonaMode } from '@vona-js/schema'
 import dotenv from 'dotenv'
 import dotenvExpand from 'dotenv-expand'
 
-export async function loadEnv(root: string, mode: CodeEngineMode): Promise<void> {
+export async function loadEnv(root: string, mode: VonaMode): Promise<void> {
   const files = [
     `.env.${mode}.local`,
     `.env.${mode}`,
@@ -23,17 +23,17 @@ export async function loadEnv(root: string, mode: CodeEngineMode): Promise<void>
   }
 }
 
-export function createEnv(root: string, mode: CodeEngineMode): CodeEngineEnv {
-  const env: CodeEngineEnv = {
+export function createEnv(root: string, mode: VonaMode): VonaEnv {
+  const env: VonaEnv = {
     mode,
     get dev() {
-      return mode === CodeEngineMode.DEVELOPMENT
+      return mode === VonaMode.DEVELOPMENT
     },
     get prod() {
-      return mode === CodeEngineMode.PRODUCTION
+      return mode === VonaMode.PRODUCTION
     },
     get test() {
-      return mode === CodeEngineMode.TEST
+      return mode === VonaMode.TEST
     },
     get(key: string) {
       return process.env[key]

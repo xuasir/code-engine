@@ -1,11 +1,11 @@
 import type { LayerOptions } from './layer'
-import type { CodeEngineModule, ModuleOptions } from './module'
+import type { ModuleOptions, VonaModule } from './module'
 
 export interface ConfigSchema {
   /** 配置继承 */
   extends: string
   /** 扩展模块 */
-  modules: Array<CodeEngineModule | string | [CodeEngineModule, ModuleOptions] | [string, ModuleOptions]>
+  modules: Array<VonaModule | string | [VonaModule, ModuleOptions] | [string, ModuleOptions]>
   /** debug 模式 */
   debug: boolean
   /** 层配置 */

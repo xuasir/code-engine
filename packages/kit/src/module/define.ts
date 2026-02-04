@@ -1,21 +1,21 @@
-import type { CodeEngine, CodeEngineModule, CodeEngineOptions, ModuleDefinition, ModuleOptions, ModuleSetupInstallResult, ModuleSetupReturn } from '@vona-js/schema'
+import type { ModuleDefinition, ModuleOptions, ModuleSetupInstallResult, ModuleSetupReturn, Vona, VonaModule, VonaOptions } from '@vona-js/schema'
 import { performance } from 'node:perf_hooks'
 import defu from 'defu'
 import { applyDefaults } from 'untyped'
-import { tryUseCodeEngine, useCodeEngine } from '../context'
+import { tryUseVona, useVona } from '../context'
 import { logger } from '../logger'
 
-// 定义模块函数，用于创建 CodeEngine 模块
-export function defineModule<TOptions extends ModuleOptions>(definition: ModuleDefinition<TOptions, Partial<TOptions>>): CodeEngineModule<TOptions> {
+// 定义模块函数，用于创建 Vona 模块
+export function defineModule<TOptions extends ModuleOptions>(definition: ModuleDefinition<TOptions, Partial<TOptions>>): VonaModule<TOptions> {
   // 如果没有配置键，则使用模块名称作为配置键
   definition.meta.configKey ||= definition.meta.name
 
   // 获取模块选项的异步函数
-  async function getOptions(inlineOptions?: Partial<TOptions>, ce: CodeEngine = useCodeEngine()): Promise<TOptions> {
+  async function getOptions(inlineOptions?: Partial<TOptions>, ce: Vona = useVona()): Promise<TOptions> {
     const configKey = definition.meta.configKey
 
-    // 从 CodeEngine 选项中获取配置选项
-    const configOptions: Partial<TOptions> = configKey && configKey in ce.options ? ce.options[configKey as keyof CodeEngineOptions] as Partial<TOptions> : {}
+    // 从 Vona 选项中获取配置选项
+    const configOptions: Partial<TOptions> = configKey && configKey in ce.options ? ce.options[configKey as keyof VonaOptions] as Partial<TOptions> : {}
 
     // 获取默认选项
     const optionsDefaults
@@ -35,10 +35,10 @@ export function defineModule<TOptions extends ModuleOptions>(definition: ModuleD
   }
 
   // 标准化模块的异步函数
-  async function normalizedModule(inlineOptions: Partial<TOptions>, ce: CodeEngine = tryUseCodeEngine()!): Promise<ModuleSetupReturn> {
-    // 检查是否在 CodeEngine 上下文中使用模块
+  async function normalizedModule(inlineOptions: Partial<TOptions>, ce: Vona = tryUseVona()!): Promise<ModuleSetupReturn> {
+    // 检查是否在 Vona 上下文中使用模块
     if (!ce) {
-      throw new TypeError('Cannot use module outside of CodeEngine context')
+      throw new TypeError('Cannot use module outside of Vona context')
     }
 
     // 获取模块的唯一键

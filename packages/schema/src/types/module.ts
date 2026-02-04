@@ -1,5 +1,5 @@
-import type { CodeEngine } from './engine'
-import type { CodeEngineHooks } from './hooks'
+import type { Vona } from './engine'
+import type { VonaHooks } from './hooks'
 
 export interface ModuleMeta {
   /** 模块名称 */
@@ -38,28 +38,28 @@ export interface ModuleDefinition<
   TOptionsDefaults extends Partial<TOptions>,
 > {
   meta: ModuleMeta
-  defaults?: TOptionsDefaults | ((ce: CodeEngine) => Awaitable<TOptionsDefaults>)
+  defaults?: TOptionsDefaults | ((ce: Vona) => Awaitable<TOptionsDefaults>)
   schema?: TOptions
-  hooks?: Partial<CodeEngineHooks>
+  hooks?: Partial<VonaHooks>
   setup?: (
     this: void,
     resolvedOptions: TOptions,
-    ce: CodeEngine
+    ce: Vona
   ) => ModuleSetupReturn
 }
 
 /** 实例 */
-export interface CodeEngineModule<
+export interface VonaModule<
   TOptions extends ModuleOptions = ModuleOptions,
 > {
   (
     this: void,
     resolvedOptions: TOptions,
-    ce: CodeEngine
+    ce: Vona
   ): ModuleSetupReturn
   getOptions?: (
     inlineOptions?: Partial<TOptions>,
-    ce?: CodeEngine
+    ce?: Vona
   ) => Promise<TOptions>
   getMeta?: () => Promise<ModuleMeta & { configKey: string }>
 }

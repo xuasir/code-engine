@@ -9,7 +9,7 @@ export default defineModule({
     configKey: 'generate',
   },
   setup(_resolvedOptions, ce) {
-    const logger = useLogger('codeEngine:generate')
+    const logger = useLogger('vona:generate')
 
     if (ce.options.__command?.name !== 'prepare') {
       logger.debug('prepare command not running')
@@ -23,7 +23,7 @@ export default defineModule({
 
       // 写入文件
       const start = performance.now()
-      await ce.vfs.root.write(path.join(ce.options.__rootDir, '.vona-js'))
+      await ce.vfs.root.write(path.join(ce.options.__rootDir, '.vona'))
       const end = performance.now()
       logger.debug('write files done, cost: %dms', end - start)
 

@@ -1,31 +1,31 @@
 import type { Hookable } from 'hookable'
 import type { AsyncLocalStorage } from 'node:async_hooks'
-import type { CodeEngineOptions } from './config'
-import type { CodeEngineEnv } from './env'
-import type { CodeEngineHooks } from './hooks'
-import type { CodeEngineModule } from './module'
+import type { VonaOptions } from './config'
+import type { VonaEnv } from './env'
+import type { VonaHooks } from './hooks'
+import type { VonaModule } from './module'
 import type { ReactiveContext } from './reactive'
 import type { VFS } from './vfs'
 
-export interface CodeEngine extends ReactiveContext {
+export interface Vona extends ReactiveContext {
   // 内部字段
   /** 名称 */
   __name: string
   /** 版本 */
   __version: string
-  /** 当前运行的 CodeEngine 模块实例的 AsyncLocalStorage */
-  __asyncLocalStorageModule: AsyncLocalStorage<CodeEngineModule>
+  /** 当前运行的 Vona 模块实例的 AsyncLocalStorage */
+  __asyncLocalStorageModule: AsyncLocalStorage<VonaModule>
   /** 依赖 */
   __dependencies?: Set<string>
 
   /** 加载后的配置 */
-  options: CodeEngineOptions
+  options: VonaOptions
   /** 钩子 */
-  hooks: Hookable<CodeEngineHooks>
-  hook: CodeEngine['hooks']['hook']
+  hooks: Hookable<VonaHooks>
+  hook: Vona['hooks']['hook']
   /** 触发钩子 */
-  callHook: CodeEngine['hooks']['callHook']
-  addHooks: CodeEngine['hooks']['addHooks']
+  callHook: Vona['hooks']['callHook']
+  addHooks: Vona['hooks']['addHooks']
   /** 基于上下文运行 */
   runWithContext: <T extends (...args: any[]) => any>(fn: T) => ReturnType<T>
 
@@ -33,7 +33,7 @@ export interface CodeEngine extends ReactiveContext {
   vfs: VFS
 
   /** 环境 */
-  env: CodeEngineEnv
+  env: VonaEnv
 
   /** 生命周期 */
   ready: () => Promise<void>

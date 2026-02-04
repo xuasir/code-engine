@@ -1,31 +1,31 @@
-import type { CodeEngine, CodeEngineHooks, CodeEngineModule, CodeEngineOptions } from '@vona-js/schema'
+import type { Vona, VonaHooks, VonaModule, VonaOptions } from '@vona-js/schema'
 import type { PackageJson } from 'pkg-types'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { createEnv, createReactiveRegistry, createVFS, installModules, loadCodeEngineConfig, loadEnv, resolveModules, runWithCodeEngineContext, setCodeEngineCtx } from '@vona-js/kit'
-import { CodeEngineMode } from '@vona-js/schema'
+import { createEnv, createReactiveRegistry, createVFS, installModules, loadEnv, loadVonaConfig, resolveModules, runWithVonaContext, setVonaCtx } from '@vona-js/kit'
+import { VonaMode } from '@vona-js/schema'
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
 import { version } from '../../package.json'
 import GenerateModule from './generate/module'
 
-export interface LoadCodeEngineOptions {
-  command: CodeEngineOptions['__command']
-  mode?: CodeEngineMode | string
+export interface LoadVonaOptions {
+  command: VonaOptions['__command']
+  mode?: VonaMode | string
 }
 
-export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeEngine> {
+export async function loadVona(opts: LoadVonaOptions): Promise<Vona> {
   const root = process.cwd()
 
   // 1. 确定 mode
-  const mode = (opts.mode as CodeEngineMode) || CodeEngineMode.DEVELOPMENT
+  const mode = (opts.mode as VonaMode) || VonaMode.DEVELOPMENT
 
   // 2. 加载环境变量
   await loadEnv(root, mode)
 
   // 3. 加载配置文件 (注入 mode)
-  const options = await loadCodeEngineConfig({
+  const options = await loadVonaConfig({
     cwd: root,
     mode,
   })
@@ -43,25 +43,25 @@ export async function loadCodeEngine(opts: LoadCodeEngineOptions): Promise<CodeE
   options.__internalModules ||= []
   options.__internalModules.push(GenerateModule)
 
-  // 创建 codeEngine 实例 (传入 env)
-  const codeEngine = createCodeEngine(options)
+  // 创建 vona 实例 (传入 env)
+  const vona = createVona(options)
 
-  // codeEngine ready
-  await codeEngine.ready()
+  // vona ready
+  await vona.ready()
 
-  return codeEngine
+  return vona
 }
 
-function createCodeEngine(options: CodeEngineOptions): CodeEngine {
+function createVona(options: VonaOptions): Vona {
   // 创建 hook
-  const hooks = createHooks<CodeEngineHooks>()
+  const hooks = createHooks<VonaHooks>()
   const reactiveRegistry = createReactiveRegistry()
 
-  // 字面对象 创建 CodeEngine 实例
-  const codeEngine: CodeEngine = {
-    __name: `CodeEngine-${randomUUID()}`,
+  // 字面对象 创建 Vona 实例
+  const vona: Vona = {
+    __name: `Vona-${randomUUID()}`,
     __version: version,
-    __asyncLocalStorageModule: new AsyncLocalStorage<CodeEngineModule>(),
+    __asyncLocalStorageModule: new AsyncLocalStorage<VonaModule>(),
     options,
     hooks,
     hook: hooks.hook.bind(hooks),
@@ -69,9 +69,9 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
     addHooks: hooks.addHooks.bind(hooks),
     vfs: createVFS(),
     env: createEnv(options.__rootDir, options.__mode),
-    ready: () => runWithCodeEngineContext(codeEngine, () => initCodeEngine(codeEngine)),
-    close: () => codeEngine.callHook('close', codeEngine),
-    runWithContext: fn => runWithCodeEngineContext(codeEngine, fn),
+    ready: () => runWithVonaContext(vona, () => initVona(vona)),
+    close: () => vona.callHook('close', vona),
+    runWithContext: fn => runWithVonaContext(vona, fn),
 
     // Reactive Context Implementation
     provide: (key, value) => reactiveRegistry.provide(key, value),
@@ -80,35 +80,35 @@ function createCodeEngine(options: CodeEngineOptions): CodeEngine {
     runEffect: fn => reactiveRegistry.runEffect(fn),
   }
 
-  // hook 执行wrapper函数注入 codeEngine 实例上下文
+  // hook 执行wrapper函数注入 vona 实例上下文
   const { callHook, callHookParallel, callHookWith } = hooks
-  hooks.callHook = (...args) => runWithCodeEngineContext(codeEngine, () => callHook(...args))
-  hooks.callHookParallel = (...args) => runWithCodeEngineContext(codeEngine, () => callHookParallel(...args))
-  hooks.callHookWith = (...args) => runWithCodeEngineContext(codeEngine, () => callHookWith(...args))
-  codeEngine.callHook = hooks.callHook.bind(hooks)
+  hooks.callHook = (...args) => runWithVonaContext(vona, () => callHook(...args))
+  hooks.callHookParallel = (...args) => runWithVonaContext(vona, () => callHookParallel(...args))
+  hooks.callHookWith = (...args) => runWithVonaContext(vona, () => callHookWith(...args))
+  vona.callHook = hooks.callHook.bind(hooks)
 
   // 注册上下文
-  setCodeEngineCtx(codeEngine)
+  setVonaCtx(vona)
 
   // 注册 注销事件
-  return codeEngine
+  return vona
 }
 
-export async function initCodeEngine(codeEngine: CodeEngine): Promise<void> {
-  const packageJSON = await readPackageJSON(codeEngine.options.__rootDir).catch(() => ({}) as PackageJson)
-  codeEngine.__dependencies = new Set([...Object.keys(packageJSON.dependencies || {}), ...Object.keys(packageJSON.devDependencies || {})])
+export async function initVona(vona: Vona): Promise<void> {
+  const packageJSON = await readPackageJSON(vona.options.__rootDir).catch(() => ({}) as PackageJson)
+  vona.__dependencies = new Set([...Object.keys(packageJSON.dependencies || {}), ...Object.keys(packageJSON.devDependencies || {})])
 
   // 加载 模块
-  await codeEngine.callHook('modules:before')
-  const { modules } = await resolveModules(codeEngine)
+  await vona.callHook('modules:before')
+  const { modules } = await resolveModules(vona)
 
   // 安装模块
   for (const [mod, options] of modules) {
     await installModules(mod, options)
   }
 
-  await codeEngine.callHook('modules:done')
+  await vona.callHook('modules:done')
 
   // call ready
-  codeEngine.callHook('ready', codeEngine)
+  vona.callHook('ready', vona)
 }
