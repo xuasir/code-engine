@@ -3,7 +3,7 @@ import type { PackageJson } from 'pkg-types'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { createEnv, createReactiveRegistry, createVFS, installModules, loadEnv, loadVonaConfig, resolveModules, runWithVonaContext, setVonaCtx } from '@vona-js/kit'
+import { createEnv, createVFS, installModules, loadEnv, loadVonaConfig, resolveModules, runWithVonaContext, setVonaCtx } from '@vona-js/kit'
 import { VonaMode } from '@vona-js/schema'
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
@@ -55,8 +55,6 @@ export async function loadVona(opts: LoadVonaOptions): Promise<Vona> {
 function createVona(options: VonaOptions): Vona {
   // 创建 hook
   const hooks = createHooks<VonaHooks>()
-  const reactiveRegistry = createReactiveRegistry()
-
   // 字面对象 创建 Vona 实例
   const vona: Vona = {
     __name: `Vona-${randomUUID()}`,
@@ -67,17 +65,11 @@ function createVona(options: VonaOptions): Vona {
     hook: hooks.hook.bind(hooks),
     callHook: hooks.callHook,
     addHooks: hooks.addHooks.bind(hooks),
-    vfs: createVFS(),
+    vfs: createVFS({ root: options.__rootDir }),
     env: createEnv(options.__rootDir, options.__mode),
     ready: () => runWithVonaContext(vona, () => initVona(vona)),
     close: () => vona.callHook('close', vona),
     runWithContext: fn => runWithVonaContext(vona, fn),
-
-    // Reactive Context Implementation
-    provide: (key, value) => reactiveRegistry.provide(key, value),
-    get: key => reactiveRegistry.get(key),
-    notify: key => reactiveRegistry.notify(key),
-    runEffect: fn => reactiveRegistry.runEffect(fn),
   }
 
   // hook 执行wrapper函数注入 vona 实例上下文

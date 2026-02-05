@@ -1,6 +1,6 @@
 import type { Schema, SchemaDefinition } from 'untyped'
 import type { Vona } from './engine'
-import type { ScanTypeEnum, VonaLayer } from './layer'
+import type { LayerAsset, ScanTypeEnum } from './layer'
 
 export type HookResult = Promise<void> | void
 
@@ -10,13 +10,13 @@ export interface VonaHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'ready': (ce: Vona) => HookResult
+  'ready': (vona: Vona) => HookResult
   /**
    * 代码引擎关闭
    * @param ce 代码引擎实例
    * @returns
    */
-  'close': (ce: Vona) => HookResult
+  'close': (vona: Vona) => HookResult
 
   // 插件
   /**
@@ -36,13 +36,13 @@ export interface VonaHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'vfs:prepare': (ce: Vona) => HookResult
+  'vfs:prepare': (vona: Vona) => HookResult
   /**
    * 代码引擎应用 VFS 生成之后
    * @param ce 代码引擎实例
    * @returns
    */
-  'vfs:generated': (ce: Vona) => HookResult
+  'vfs:generated': (vona: Vona) => HookResult
   // /**
   //  * 代码引擎写入类型声明文件
   //  * @param ce 代码引擎实例
@@ -56,13 +56,13 @@ export interface VonaHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:extend': (ce: Vona) => HookResult
+  'layer:extend': (vona: Vona) => HookResult
   /**
    * layer 加载完成
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:loaded': (layerMap: Record<ScanTypeEnum, VonaLayer[]>, ce: Vona) => HookResult
+  'layer:loaded': (layerMap: Record<ScanTypeEnum, LayerAsset[]>, vona: Vona) => HookResult
 
   /**
    * layer 变更
@@ -71,7 +71,7 @@ export interface VonaHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'layer:change': (type: ScanTypeEnum, layers: VonaLayer[], ce: Vona) => HookResult
+  'layer:change': (type: ScanTypeEnum, layers: LayerAsset[], vona: Vona) => HookResult
 
   // 连接构建引擎
   /**
@@ -79,13 +79,13 @@ export interface VonaHooks {
    * @param ce 代码引擎实例
    * @returns
    */
-  'vite:config': (ce: Vona) => HookResult
+  'vite:config': (vona: Vona) => HookResult
   /**
    * 代码引擎应用写入 rspack 配置文件
    * @param ce 代码引擎实例
    * @returns
    */
-  'rspack:config': (ce: Vona) => HookResult
+  'rspack:config': (vona: Vona) => HookResult
 
   // 配置文件扩展
   // Schema

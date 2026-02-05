@@ -3,10 +3,17 @@ import { defineResolvers } from '../utils/def'
 export default defineResolvers({
   layers: {
     enabled: true,
-    name: 'app',
+    remote: {
+      cacheDir: '.vona/layers',
+      preferCache: true,
+    },
+    plugins: {
+      enabled: true,
+      name: 'plugins',
+    },
     api: {
       enabled: true,
-      name: 'api',
+      name: 'apis',
     },
     components: {
       enabled: true,
@@ -35,6 +42,10 @@ export default defineResolvers({
     icons: {
       enabled: true,
       name: 'icons',
+    },
+    styles: {
+      enabled: true,
+      name: 'styles',
     },
   },
 })

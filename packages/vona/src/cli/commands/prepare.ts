@@ -12,6 +12,11 @@ export default defineCommand({
       description: 'Run in specific mode',
       default: 'development',
     },
+    refreshLayers: {
+      type: 'boolean',
+      description: 'Refresh remote layers cache',
+      default: false,
+    },
   },
   async run(ctx) {
     loadVona({

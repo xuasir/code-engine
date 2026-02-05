@@ -20,6 +20,6 @@ export const main = defineCommand({
   subCommands: commands,
   setup(ctx) {
     const command = ctx.args._[0]
-    logger.debug(`running \`ce ${command}\` command`)
+    logger.debug(`running \`vona ${command}\` command`)
   },
 })

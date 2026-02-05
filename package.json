@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm -r --filter \"./packages/*\" run build",
     "dev": "pnpm -r --filter \"./packages/*\" run dev",
-    "lint": "eslint --cache .",
+    "lint": "eslint --cache ./packages",
     "prepublishOnly": "pnpm run build",
     "docs": "pnpm -C docs run docs:dev",
     "docs:build": "pnpm -C docs run docs:build",
@@ -34,6 +34,6 @@
     "pre-commit": "pnpm i --frozen-lockfile --ignore-scripts --offline && npx lint-staged"
   },
   "lint-staged": {
-    "*": "eslint --fix"
+    "./packages/*": "eslint --fix"
   }
 }

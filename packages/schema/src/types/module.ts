@@ -38,13 +38,13 @@ export interface ModuleDefinition<
   TOptionsDefaults extends Partial<TOptions>,
 > {
   meta: ModuleMeta
-  defaults?: TOptionsDefaults | ((ce: Vona) => Awaitable<TOptionsDefaults>)
+  defaults?: TOptionsDefaults | ((vona: Vona) => Awaitable<TOptionsDefaults>)
   schema?: TOptions
   hooks?: Partial<VonaHooks>
   setup?: (
     this: void,
     resolvedOptions: TOptions,
-    ce: Vona
+    vona: Vona
   ) => ModuleSetupReturn
 }
 
@@ -55,11 +55,11 @@ export interface VonaModule<
   (
     this: void,
     resolvedOptions: TOptions,
-    ce: Vona
+    vona: Vona
   ): ModuleSetupReturn
   getOptions?: (
     inlineOptions?: Partial<TOptions>,
-    ce?: Vona
+    vona?: Vona
   ) => Promise<TOptions>
   getMeta?: () => Promise<ModuleMeta & { configKey: string }>
 }

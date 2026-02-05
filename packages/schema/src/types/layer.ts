@@ -8,6 +8,8 @@ export enum ScanTypeEnum {
   Api = 'api',
   Icon = 'icons',
   Util = 'utils',
+  Style = 'styles',
+  Plugin = 'plugins',
 }
 
 // 扫描模块优先级枚举
@@ -51,12 +53,27 @@ export interface LayerOptions {
   enabled: boolean
   /**
    * 层名称
-   * @default 'app'
+   * @default 'src'
    */
   name: string
   /**
+   * 远程层配置
+   */
+  remote?: {
+    /**
+     * 远程层缓存目录
+     * @default '.vona/layers'
+     */
+    cacheDir?: string
+    /**
+     * 缓存优先
+     * @default true
+     */
+    preferCache?: boolean
+  }
+  /**
    * API 目录
-   * @default { name: 'api' }
+   * @default { name: 'apis' }
    */
   api: LayerOptionScanConfig
   /**
@@ -94,83 +111,88 @@ export interface LayerOptions {
    * @default { name: 'icons' }
    */
   icons: LayerOptionScanConfig
+  /**
+   * 样式目录
+   * @default { name: 'styles' }
+   */
+  styles: LayerOptionScanConfig
+  /**
+   * 插件目录
+   * @default { name: 'plugins' }
+   */
+  plugins: LayerOptionScanConfig
 }
 
+export type LayerSourceLocal = string
+
+export interface LayerSourceRemote {
+  source: {
+    url?: string
+    pkg?: string
+    integrity?: string
+    root: string
+  }
+  cacheDir: string
+  preferCache?: boolean
+}
+
+export type LayerSource = LayerSourceLocal | LayerSourceRemote
+
 // 层定义
-export interface VonaLayerDefinition {
-  /** 层工作目录 */
-  cwd: string
-  /** 层优先级 @default 0 */
-  priority?: number
+export interface LayerDefinition {
+  /** Layer 唯一标识 */
+  id: string
+  /** Layer 来源 */
+  source: LayerSource
+  /** 层优先级 */
+  priority: number
   /** 忽略文件 */
   ignore?: string[]
 }
 
-// 扫描后的层数据
-export interface VonaLayer {
-  /** 元数据 */
-  meta: {
-    /** Layer 名称 (e.g. "base") */
-    layer: string
-    /** Layer 优先级 */
-    priority: number
-  }
+export interface LayerAssetMeta {
+  layer: string
+  priority: number
+}
 
-  /** 路径信息 */
-  path: {
-    /** Layer 根目录绝对路径 */
-    root: string
-    /** 模块完整地址 */
-    abs: string
-    /** 相对于 Root 的路径 (e.g. "components/Button.vue") */
-    relative: string
-    /** 相对扫描文件夹的地址 (e.g. "Button.vue") */
-    scan: string
-    /** 别名地址，相对于根目录 @cwd/xxx */
-    alias: string
-    /** vite 模式下 prefetch 地址 */
-    prefetch: string
-  }
+export interface LayerAssetPath {
+  root: string
+  abs: string
+  relative: string
+  scan: string
+  alias: string
+  prefetch: string
+}
 
-  /** 命名变体 */
-  name: {
-    /** 原始文件名 */
-    origin: string
-    /** 大驼峰 */
-    pascal: string
-    /** 懒加载大驼峰 */
-    lazyPascal: string
-    /** 中划线 */
-    kebab: string
-    /** 懒加载中划线 */
-    lazyKebab: string
-    /** 安全的变量名 */
-    safeVar: string
-    /** 安全的异步变量名 */
-    safeLazyVar: string
-    /** 独立包名 */
-    chunk: string
-  }
+export interface LayerAssetName {
+  origin: string
+  pascal: string
+  lazyPascal: string
+  kebab: string
+  lazyKebab: string
+  safeVar: string
+  safeLazyVar: string
+  chunk: string
+}
 
-  /** 配置与加载 */
-  config: {
-    /** 导出 仅支持默认导出 */
-    export: 'default'
-    /** 预请求 */
-    prefetch: boolean
-    /** 预加载 */
-    preload: boolean
-  }
+export interface LayerAssetConfig {
+  export: 'default'
+  prefetch?: boolean
+  preload?: boolean
+}
 
-  /** 运行时加载器 */
-  loader: {
-    /** 动态加载语句 */
-    dynamicImport: () => string
-  }
+export interface LayerAssetLoader {
+  dynamicImport: () => string
+}
 
-  /** 扩展字段 */
-  [key: string]: any
-
-  /** 覆盖历史：记录被当前层覆盖的下层资源 */
-  overrides?: Partial<VonaLayer>[]
+export interface LayerAsset {
+  type: ScanTypeEnum
+  id: string
+  virtualPath: string
+  meta: LayerAssetMeta
+  path: LayerAssetPath
+  name?: LayerAssetName
+  config: LayerAssetConfig
+  loader: LayerAssetLoader
+  overrides?: Partial<LayerAsset>[]
 }

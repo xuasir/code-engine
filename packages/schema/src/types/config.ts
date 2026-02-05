@@ -1,6 +1,6 @@
 import type { SchemaDefinition } from 'untyped'
 import type { VonaMode } from './env'
-import type { VonaLayerDefinition } from './layer'
+import type { LayerDefinition } from './layer'
 import type { ModuleMeta, ModuleOptions, ModuleSetupInstallResult, VonaModule } from './module'
 import type { ConfigSchema } from './schema'
 
@@ -25,7 +25,7 @@ export interface VonaOptions extends ConfigSchema {
   /**
    * 代码工程的层
    */
-  __layers: VonaLayerDefinition[]
+  __layers: LayerDefinition[]
   /**
    * 内部模块
    */

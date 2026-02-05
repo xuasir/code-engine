@@ -11,16 +11,16 @@ export function defineModule<TOptions extends ModuleOptions>(definition: ModuleD
   definition.meta.configKey ||= definition.meta.name
 
   // 获取模块选项的异步函数
-  async function getOptions(inlineOptions?: Partial<TOptions>, ce: Vona = useVona()): Promise<TOptions> {
+  async function getOptions(inlineOptions?: Partial<TOptions>, vona: Vona = useVona()): Promise<TOptions> {
     const configKey = definition.meta.configKey
 
     // 从 Vona 选项中获取配置选项
-    const configOptions: Partial<TOptions> = configKey && configKey in ce.options ? ce.options[configKey as keyof VonaOptions] as Partial<TOptions> : {}
+    const configOptions: Partial<TOptions> = configKey && configKey in vona.options ? vona.options[configKey as keyof VonaOptions] as Partial<TOptions> : {}
 
     // 获取默认选项
     const optionsDefaults
       = typeof definition.defaults === 'function'
-        ? await definition.defaults(ce)
+        ? await definition.defaults(vona)
         : definition.defaults ?? {}
 
     // 合并选项
@@ -35,35 +35,35 @@ export function defineModule<TOptions extends ModuleOptions>(definition: ModuleD
   }
 
   // 标准化模块的异步函数
-  async function normalizedModule(inlineOptions: Partial<TOptions>, ce: Vona = tryUseVona()!): Promise<ModuleSetupReturn> {
+  async function normalizedModule(inlineOptions: Partial<TOptions>, vona: Vona = tryUseVona()!): Promise<ModuleSetupReturn> {
     // 检查是否在 Vona 上下文中使用模块
-    if (!ce) {
+    if (!vona) {
       throw new TypeError('Cannot use module outside of Vona context')
     }
 
     // 获取模块的唯一键
     const uniqueKey = definition.meta.name || definition.meta.configKey
     if (uniqueKey) {
-      ce.options.__requiredModules ||= {}
+      vona.options.__requiredModules ||= {}
       // 如果模块已加载，则返回 false
-      if (ce.options.__requiredModules[uniqueKey]) {
+      if (vona.options.__requiredModules[uniqueKey]) {
         return false
       }
       // 标记模块已加载
-      ce.options.__requiredModules[uniqueKey] = true
+      vona.options.__requiredModules[uniqueKey] = true
     }
 
     // 获取选项
-    const _options = await getOptions(inlineOptions, ce)
+    const _options = await getOptions(inlineOptions, vona)
 
     // 添加钩子
     if (definition.hooks) {
-      ce.hooks.addHooks(definition.hooks)
+      vona.hooks.addHooks(definition.hooks)
     }
 
     // 记录设置时间
     const start = performance.now()
-    const res = await definition.setup?.call(null as any, _options, ce) ?? {}
+    const res = await definition.setup?.call(null as any, _options, vona) ?? {}
     const perf = performance.now() - start
     const setupTime = Math.round((perf * 100)) / 100
 

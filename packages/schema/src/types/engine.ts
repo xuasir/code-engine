@@ -4,10 +4,9 @@ import type { VonaOptions } from './config'
 import type { VonaEnv } from './env'
 import type { VonaHooks } from './hooks'
 import type { VonaModule } from './module'
-import type { ReactiveContext } from './reactive'
 import type { VFS } from './vfs'
 
-export interface Vona extends ReactiveContext {
+export interface Vona {
   // 内部字段
   /** 名称 */
   __name: string

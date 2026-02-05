@@ -9,7 +9,7 @@ const asyncVonaStorage = createContext<Vona>({
 })
 
 // 设置 Vona 上下文实例
-export const setVonaCtx = (ce: Vona): void => asyncVonaStorage.set(ce)
+export const setVonaCtx = (vona: Vona): void => asyncVonaStorage.set(vona)
 
 // 获取 Vona 上下文实例，如果不存在则返回 null
 export const getVonaCtx = (): Vona | null => asyncVonaStorage.tryUse()
@@ -29,6 +29,6 @@ export function tryUseVona(): Vona | null {
 }
 
 // 在 Vona 上下文中运行指定函数
-export function runWithVonaContext<T extends (...args: any[]) => any>(ce: Vona, fn: T): ReturnType<T> {
-  return asyncVonaStorage.call(ce, fn) as ReturnType<T>
+export function runWithVonaContext<T extends (...args: any[]) => any>(vona: Vona, fn: T): ReturnType<T> {
+  return asyncVonaStorage.call(vona, fn) as ReturnType<T>
 }

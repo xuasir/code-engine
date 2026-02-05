@@ -1,25 +1,31 @@
-import type { ScanTypeEnum, VonaLayer, VonaLayerDefinition } from '@vona-js/schema'
-import type { InjectionKey } from './reactive'
+import type { LayerAsset, LayerDefinition, ScanTypeEnum } from '@vona-js/schema'
 import { useVona } from './context'
-import { defineKey } from './reactive'
 
-export function addLayer(layer: VonaLayerDefinition): void {
-  const ce = useVona()
-  ce.hook('layer:extend', async () => {
-    ce.options.__layers.push(layer)
+export function addLayer(layer: LayerDefinition): void {
+  const vona = useVona()
+  vona.hook('layer:extend', async () => {
+    vona.options.__layers.push(layer)
   })
 }
 
-const layerKeyMap = new Map<ScanTypeEnum, InjectionKey<VonaLayer[]>>()
+const layerStore = new WeakMap<object, Map<ScanTypeEnum, LayerAsset[]>>()
 
-export function getLayerKey(type: ScanTypeEnum): InjectionKey<VonaLayer[]> {
-  if (!layerKeyMap.has(type)) {
-    layerKeyMap.set(type, defineKey<VonaLayer[]>(`ce-layer-${type}`))
+function getStore(): Map<ScanTypeEnum, LayerAsset[]> {
+  const vona = useVona() as unknown as object
+  let store = layerStore.get(vona)
+  if (!store) {
+    store = new Map()
+    layerStore.set(vona, store)
   }
-  return layerKeyMap.get(type)!
+  return store
 }
 
-export function useLayer(type: ScanTypeEnum): VonaLayer[] {
-  const ce = useVona()
-  return ce.get(getLayerKey(type))!
+export function setLayerData(type: ScanTypeEnum, layers: LayerAsset[]): void {
+  const store = getStore()
+  store.set(type, layers)
+}
+
+export function useLayer(type: ScanTypeEnum): LayerAsset[] {
+  const store = getStore()
+  return store.get(type) || []
 }

@@ -1,9 +1,10 @@
 import type {
   VFS,
+  VfsCandidate,
   VfsHooks,
   VfsInspectResult,
+  VfsNode,
   VfsOptions,
-  VfsRecord,
   VfsScopeContext,
   VfsSetup,
   VfsSource,
@@ -13,242 +14,194 @@ import { createHooks } from 'hookable'
 import micromatch from 'micromatch'
 import { hash } from 'ohash'
 
-/**
- * VFS 实现类
- */
 class VFSImpl implements VFS {
-  /** 事件钩子系统 */
   public hooks = createHooks<VfsHooks>()
 
-  /** 扁平化文件存储 Map */
-  private files = new Map<string, VfsRecord>()
+  private nodes = new Map<string, VfsNode>()
 
-  /** 文件历史记录(用于调试) */
-  private history = new Map<string, VfsRecord[]>()
-
-  /** 根目录 */
   private root: string
 
-  /** 是否为开发模式 */
   private isDev: boolean
 
-  /** 默认优先级 */
   protected basePriority = 0
 
-  /** Scope 名称 */
-  public name?: string
+  public layerId?: string
 
   constructor(options: VfsOptions) {
     this.root = options.root
     this.isDev = options.isDev ?? false
   }
 
-  /**
-   * 创建子 Scope
-   */
-  scope(options: { name?: string, priority?: number }): VfsScopeContext {
+  scope(options: { layerId?: string, priority?: number }): VfsScopeContext {
     return new VfsScopeImpl(this, {
-      name: options.name,
+      layerId: options.layerId,
       basePriority: options.priority ?? this.basePriority,
     })
   }
 
-  /**
-   * 挂载单个文件(引用模式)
-   */
   mount(virtualPath: string, physicalPath: string, options?: { priority?: number, originalPath?: string, pattern?: string }): void {
     const priority = options?.priority ?? this.basePriority
     const path = this.normalizePath(virtualPath)
 
-    this.update({
-      key: hash({ path, priority, scope: this.name }), // 生成唯一 key
-      path,
+    this.update(path, {
+      key: hash({ path, priority, layerId: this.layerId }),
+      layerId: this.layerId || 'unknown',
+      priority,
       kind: 'reference',
       source: physicalPath,
-      priority,
-      scope: this.name,
+      sourceType: 'mount',
       originalPath: options?.originalPath,
       pattern: options?.pattern,
-      sourceType: 'mount',
-      layer: this.name, // 假设 Scope name 等同于 Layer name
     })
   }
 
-  /**
-   * 写入单个文件(实体模式)
-   */
   write(virtualPath: string, content: VfsSource, priority?: number): void {
     const p = priority ?? this.basePriority
     const path = this.normalizePath(virtualPath)
 
-    this.update({
-      key: hash({ path, priority: p, scope: this.name }),
-      path,
+    this.update(path, {
+      key: hash({ path, priority: p, layerId: this.layerId }),
+      layerId: this.layerId || 'unknown',
+      priority: p,
       kind: 'entity',
       source: content,
-      priority: p,
-      scope: this.name,
       sourceType: 'write',
-      layer: this.name,
     })
   }
 
-  /**
-   * 添加模板文件(实体模式 + 响应式依赖)
-   */
   addTemplate(template: VfsTemplate): void {
     const path = this.normalizePath(template.path)
 
-    this.update({
-      key: hash({ path, priority: this.basePriority, scope: this.name }),
-      path,
+    this.update(path, {
+      key: hash({ path, priority: this.basePriority, layerId: this.layerId }),
+      layerId: this.layerId || 'unknown',
+      priority: this.basePriority,
       kind: 'entity',
       source: () => template.get({ vfs: this }),
-      priority: this.basePriority,
-      scope: this.name,
-      watch: template.watch,
       sourceType: 'template',
-      layer: this.name,
+      watch: template.watch,
     })
   }
 
-  /**
-   * 移除文件
-   */
-  remove(virtualPath: string): void {
+  remove(virtualPath: string, layerId?: string): void {
     const normalizedPath = this.normalizePath(virtualPath)
-    const existed = this.files.has(normalizedPath)
+    const existing = this.nodes.get(normalizedPath)
 
-    if (existed) {
-      this.files.delete(normalizedPath)
+    if (!existing)
+      return
+
+    if (!layerId) {
+      this.nodes.delete(normalizedPath)
       this.hooks.callHook('file:removed', normalizedPath)
+      return
     }
+
+    const candidates = existing.candidates.filter(candidate => candidate.layerId !== layerId)
+    if (!candidates.length) {
+      this.nodes.delete(normalizedPath)
+      this.hooks.callHook('file:removed', normalizedPath)
+      return
+    }
+
+    const nextActive = pickActiveCandidate(candidates)
+    const nextNode: VfsNode = {
+      path: normalizedPath,
+      active: nextActive,
+      candidates,
+    }
+
+    this.nodes.set(normalizedPath, nextNode)
+    if (existing.active.key !== nextActive.key)
+      this.hooks.callHook('file:updated', nextNode)
   }
 
-  /**
-   * 读取单个文件
-   */
-  read(path: string): VfsRecord | undefined {
-    return this.files.get(this.normalizePath(path))
+  read(path: string): VfsNode | undefined {
+    return this.nodes.get(this.normalizePath(path))
   }
 
-  /**
-   * 模式匹配查询
-   */
-  glob(pattern: string): VfsRecord[] {
-    const results: VfsRecord[] = []
+  glob(pattern: string): VfsNode[] {
+    const results: VfsNode[] = []
     const normalizedPattern = this.normalizePath(pattern)
 
-    for (const [path, record] of this.files) {
+    for (const [path, node] of this.nodes) {
       if (micromatch.isMatch(path, normalizedPattern)) {
-        results.push(record)
+        results.push(node)
       }
     }
 
     return results
   }
 
-  /**
-   * 查看文件调试信息
-   */
   inspect(path: string): VfsInspectResult | undefined {
-    const normalizedPath = this.normalizePath(path)
-    const current = this.files.get(normalizedPath)
-    const historyRecords = this.history.get(normalizedPath)
-
-    if (!current) {
+    const node = this.nodes.get(this.normalizePath(path))
+    if (!node)
       return undefined
-    }
 
     return {
-      path: normalizedPath,
-      kind: current.kind,
-      activeSource: current.source,
-      activePriority: current.priority,
-      activeScope: current.scope,
-      history: (historyRecords || []).map(record => ({
-        scope: record.scope,
-        source: record.source,
-        priority: record.priority,
-      })),
+      path: node.path,
+      active: node.active,
+      candidates: node.candidates,
     }
   }
 
-  /**
-   * 应用 VFS Setup
-   */
   async use(setup: VfsSetup): Promise<void> {
     await setup(this)
   }
 
-  /**
-   * 更新文件记录(内部方法)
-   * 处理优先级冲突和事件触发
-   */
-  private update(record: VfsRecord): void {
-    const existing = this.files.get(record.path)
+  private update(path: string, candidate: VfsCandidate): void {
+    const existing = this.nodes.get(path)
 
-    // 记录历史
-    if (!this.history.has(record.path)) {
-      this.history.set(record.path, [])
-    }
-    this.history.get(record.path)!.push(record)
-
-    // 优先级判断:只有当新记录优先级 >= 现有记录优先级时才覆盖
-    if (!existing || record.priority >= existing.priority) {
-      this.files.set(record.path, record)
-
-      // 触发事件
-      if (existing) {
-        this.hooks.callHook('file:updated', record)
+    if (!existing) {
+      const node: VfsNode = {
+        path,
+        active: candidate,
+        candidates: [candidate],
       }
-      else {
-        this.hooks.callHook('file:added', record)
-      }
+      this.nodes.set(path, node)
+      this.hooks.callHook('file:added', node)
+      return
     }
+
+    const candidates = [...existing.candidates, candidate]
+    const nextActive = pickActiveCandidate(candidates)
+    const nextNode: VfsNode = {
+      path,
+      active: nextActive,
+      candidates,
+    }
+
+    this.nodes.set(path, nextNode)
+    this.hooks.callHook('file:updated', nextNode)
   }
 
-  /**
-   * 规范化路径
-   */
   private normalizePath(path: string): string {
-    // 确保路径以 / 开头
     return path.startsWith('/') ? path : `/${path}`
   }
 
-  /**
-   * 内部方法:设置 basePriority(供 Scope 使用)
-   */
-  setBasePriority(priority: number, name?: string): void {
+  setBasePriority(priority: number, layerId?: string): void {
     this.basePriority = priority
-    this.name = name
+    this.layerId = layerId
   }
 
-  /**
-   * 内部方法:获取 basePriority(供 Scope 使用)
-   */
   getBasePriority(): number {
     return this.basePriority
   }
 }
 
-/**
- * VFS Scope 实现类
- */
 class VfsScopeImpl implements VfsScopeContext {
   private vfs: VFSImpl
   private basePriority: number
-  public name?: string
+  public layerId?: string
 
-  constructor(vfs: VFSImpl, options: { name?: string, basePriority: number }) {
+  constructor(vfs: VFSImpl, options: { layerId?: string, basePriority: number }) {
     this.vfs = vfs
-    this.name = options.name
+    this.layerId = options.layerId
     this.basePriority = options.basePriority
   }
 
-  scope(options: { name?: string, priority?: number }): VfsScopeContext {
+  scope(options: { layerId?: string, priority?: number }): VfsScopeContext {
     return new VfsScopeImpl(this.vfs, {
-      name: options.name || this.name,
+      layerId: options.layerId || this.layerId,
       basePriority: options.priority ?? this.basePriority,
     })
   }
@@ -257,7 +210,6 @@ class VfsScopeImpl implements VfsScopeContext {
     this.vfs.mount(virtualPath, physicalPath, {
       priority: this.basePriority,
       ...options,
-      // 只有在 explicit priority 覆盖时才使用 options.priority
       ...(options?.priority !== undefined ? { priority: options.priority } : {}),
     })
   }
@@ -267,32 +219,38 @@ class VfsScopeImpl implements VfsScopeContext {
   }
 
   addTemplate(template: VfsTemplate): void {
-    // 临时保存当前优先级
     const originalPriority = this.vfs.getBasePriority()
-    const originalName = this.vfs.name
+    const originalLayerId = this.vfs.layerId
 
-    this.vfs.setBasePriority(this.basePriority, this.name)
+    this.vfs.setBasePriority(this.basePriority, this.layerId)
     this.vfs.addTemplate(template)
 
-    // 恢复原始状态
-    this.vfs.setBasePriority(originalPriority, originalName)
+    this.vfs.setBasePriority(originalPriority, originalLayerId)
   }
 
   remove(virtualPath: string): void {
-    this.vfs.remove(virtualPath)
+    this.vfs.remove(virtualPath, this.layerId)
   }
 }
 
-/**
- * 创建 VFS 实例
- */
+function pickActiveCandidate(candidates: VfsCandidate[]): VfsCandidate {
+  let picked = candidates[0]
+  for (const candidate of candidates) {
+    if (!picked || candidate.priority > picked.priority) {
+      picked = candidate
+      continue
+    }
+    if (candidate.priority === picked.priority && candidate.key !== picked.key) {
+      picked = candidate
+    }
+  }
+  return picked
+}
+
 export function createVFS(options: VfsOptions): VFS {
   return new VFSImpl(options)
 }
 
-/**
- * 定义 VFS Setup
- */
 export function defineVfsSetup(setup: VfsSetup): VfsSetup {
   return setup
 }
