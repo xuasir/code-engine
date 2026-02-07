@@ -15,10 +15,8 @@
 - 机器读字段用英文；人读字段用中文。
 
 ## 上下文
-1. `contexts/context.md`
-2. `README.md`
-3. `.agents/specs/*.md`
-4. `.agents/workflows/*.md`
+1. `README.md`
+2. `.agents/plans/*.md`
 
 ## 通用规范
 - Implementation Plan 与 Task 标题与说明用中文。
@@ -34,7 +32,7 @@
 ## Spec 驱动开发
 - 每次接到需求：
   1) 制定可执行计划
-  2) 将计划写入 `.trae/task/plan.md`
+  2) 将计划写入 `.agents/plans/task.md`
   3) 我在对话中审阅并给出“最终计划”
   4) 仅在最终计划确认后开始编码
 - 简单任务可直接在对话中审阅，无需写入文件。

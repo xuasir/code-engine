@@ -19,15 +19,18 @@ export default defineCommand({
     },
   },
   async run(ctx) {
-    loadVona({
-      mode: ctx.args.mode,
-      command: {
-        name: 'prepare',
-        args: ctx.args,
-      },
-    }).catch((err: any) => {
+    try {
+      await loadVona({
+        mode: ctx.args.mode,
+        command: {
+          name: 'prepare',
+          args: ctx.args,
+        },
+      })
+    }
+    catch (err: any) {
       // 处理错误
       console.error(`Vona prepare command throw a error: ${err.message}`)
-    })
+    }
   },
 })

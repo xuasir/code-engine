@@ -1,51 +1,24 @@
 import { defineResolvers } from '../utils/def'
 
 export default defineResolvers({
-  layers: {
+  layer: {
     enabled: true,
+    defs: [],
     remote: {
       cacheDir: '.vona/layers',
       preferCache: true,
     },
-    plugins: {
-      enabled: true,
-      name: 'plugins',
-    },
-    api: {
-      enabled: true,
-      name: 'apis',
-    },
-    components: {
-      enabled: true,
-      name: 'components',
-    },
-    composables: {
-      enabled: true,
-      name: 'composables',
-    },
-    layouts: {
-      enabled: true,
-      name: 'layouts',
-    },
-    pages: {
-      enabled: true,
-      name: 'pages',
-    },
-    store: {
-      enabled: true,
-      name: 'store',
-    },
-    utils: {
-      enabled: true,
-      name: 'utils',
-    },
-    icons: {
-      enabled: true,
-      name: 'icons',
-    },
-    styles: {
-      enabled: true,
-      name: 'styles',
+    config: {
+      pages: { enabled: true, name: 'pages', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
+      components: { enabled: true, name: 'components', pattern: ['*.{vue,jsx,tsx}', '**/index.{vue,jsx,tsx}'], ignore: [] },
+      layouts: { enabled: true, name: 'layouts', pattern: ['*.vue', '**/index.{vue,jsx,tsx}'], ignore: [] },
+      composables: { enabled: true, name: 'composables', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
+      apis: { enabled: true, name: 'apis', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
+      icons: { enabled: true, name: 'icons', pattern: ['**/*.svg'], ignore: [] },
+      store: { enabled: true, name: 'store', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: ['index.{ts,js}'] },
+      utils: { enabled: true, name: 'utils', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
+      styles: { enabled: true, name: 'styles', pattern: ['**/*.{css,scss,less}'], ignore: [] },
+      plugins: { enabled: true, name: 'plugins', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
     },
   },
 })

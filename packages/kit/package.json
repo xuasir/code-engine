@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@vona-js/schema": "workspace:*",
+    "@vona-js/utils": "workspace:*",
     "c12": "catalog:prod",
     "consola": "catalog:prod",
     "defu": "catalog:prod",

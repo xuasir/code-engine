@@ -1,18 +1,10 @@
-import type { LayerOptions } from './layer'
+import type { LayerConfig } from './layer'
 import type { ModuleOptions, VonaModule } from './module'
 
 export interface ConfigSchema {
-  /** 配置继承 */
   extends: string
-  /** 扩展模块 */
   modules: Array<VonaModule | string | [VonaModule, ModuleOptions] | [string, ModuleOptions]>
-  /** debug 模式 */
   debug: boolean
-  /** 层配置 */
-  layers: LayerOptions
-  /**
-   * 配置文件路径
-   * @private
-   */
+  layer: LayerConfig
   __configFile: string
 }

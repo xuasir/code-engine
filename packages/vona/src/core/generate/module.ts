@@ -1,12 +1,22 @@
-import { defineModule, useLogger } from '@vona-js/kit'
+import type { Vona } from '@vona-js/schema'
+import { debounce, defineModule, generateDTS, useLogger } from '@vona-js/kit'
+import { ensureDir, writeFile } from 'fs-extra'
+import { join } from 'pathe'
+
+export interface GenerateModuleOptions {
+  outputDir?: string
+}
 
 export default defineModule({
   meta: {
-    name: 'generate',
-    version: '1.0.0',
+    name: 'vona:generate',
+    version: '0.0.1',
     configKey: 'generate',
   },
-  setup(_resolvedOptions, vona) {
+  defaults: (): GenerateModuleOptions => ({
+    outputDir: '.vona',
+  }),
+  async setup(options: GenerateModuleOptions, vona: Vona) {
     const logger = useLogger('vona:generate')
 
     if (vona.options.__command?.name !== 'prepare') {
@@ -14,14 +24,37 @@ export default defineModule({
       return false
     }
 
-    // ce.hook('modules:done', async () => {
-    //   // 基于 VFS 完成 Layer 合并与挂载
-    //   await ce.callHook('vfs:prepare', ce)
-    //   logger.debug('vfs:prepare done')
+    const outputDir = join(vona.options.__rootDir, options.outputDir!)
+    await ensureDir(outputDir)
+    const dtsPath = join(outputDir, 'types.d.ts')
 
-    //   // 后续资源生成由具体 module 处理
-    //   await ce.callHook('vfs:generated', ce)
-    //   logger.debug('vfs:generated done')
-    // })
+    const writeTypes = async (): Promise<void> => {
+      if (!vona.ovfs) {
+        logger.debug('ovfs not ready, skip type generation')
+        return
+      }
+      const dts = generateDTS(vona.ovfs.toManifest())
+      await writeFile(dtsPath, dts)
+    }
+
+    const writeTypesDebounced = debounce(() => {
+      void writeTypes().catch((error) => {
+        logger.error(error)
+      })
+    }, 80)
+
+    await writeTypes()
+
+    vona.hook('layer:loaded', async () => {
+      await writeTypes()
+    })
+
+    vona.hook('layer:change', () => {
+      writeTypesDebounced()
+    })
+
+    vona.hook('modules:done', async () => {
+      await writeTypes()
+    })
   },
 })

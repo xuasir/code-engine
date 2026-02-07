@@ -57,3 +57,9 @@ catalogs:
   types:
     '@types/micromatch': ^4.0.10
     '@types/node': ^24.3.0
+  conflicts_prod_h3_3_3:
+    fast-glob: ^3.3.3
+catalog:
+  '@types/chokidar': ^2.1.7
+  '@types/fs-extra': ^11.0.4
+  fs-extra: ^11.3.3
