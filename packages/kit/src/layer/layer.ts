@@ -1,5 +1,6 @@
 import type { LayerAsset, LayerDef, OVFSMutation, ResourceScanConfig, ResourceType } from '@vona-js/schema'
 import { existsSync } from 'node:fs'
+import { BASE_RESOURCE_IGNORE, normalizeSlashes } from '@vona-js/utils'
 import chokidar from 'chokidar'
 import micromatch from 'micromatch'
 import { join, relative } from 'pathe'
@@ -41,17 +42,9 @@ function isWatchResourceLimitError(error: unknown): boolean {
 
 function buildLayerIgnore(def: LayerDef): string[] {
   return [
-    '**/_*',
-    '**/_*/**',
-    '**/.*',
-    '**/.*/**',
-    'node_modules',
+    ...BASE_RESOURCE_IGNORE,
     ...(def.ignore ?? []),
   ]
-}
-
-function normalizeSlashes(value: string): string {
-  return value.replace(/\\/g, '/')
 }
 
 function buildWatchTargets(def: LayerDef, config: Record<string, ResourceScanConfig>): WatchTarget[] {

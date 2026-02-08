@@ -1,9 +1,17 @@
 import type { LayerAsset, LayerDef, ResourceScanConfig, ResourceType } from '@vona-js/schema'
 import { existsSync } from 'node:fs'
+import {
+  BASE_RESOURCE_IGNORE,
+  camelCase,
+  capitalize,
+  EXT_REG,
+  normalizeSlashes,
+  toKebabToken,
+  toPascalByPath,
+  toPascalToken,
+} from '@vona-js/utils'
 import fg from 'fast-glob'
 import { join } from 'pathe'
-
-const EXT_REG = /\.(vue|jsx|tsx|js|ts|svg|css|scss|less)$/i
 
 export async function scanLayer(
   layer: LayerDef,
@@ -278,11 +286,7 @@ function parseName(keyName: string, type: ResourceType): LayerAsset['name'] {
 
 function buildIgnore(layer: LayerDef, scanConfig: ResourceScanConfig): string[] {
   return [
-    '**/_*',
-    '**/_*/**',
-    '**/.*',
-    '**/.*/**',
-    'node_modules',
+    ...BASE_RESOURCE_IGNORE,
     ...(layer.ignore ?? []),
     ...(scanConfig.ignore ?? []),
   ]
@@ -304,46 +308,4 @@ function normalizeSegment(relative: string, type: ResourceType, rootName?: strin
   value = value.replace(EXT_REG, '')
   value = value.replace(/(^|\/)index$/, '$1')
   return value.replace(/^\/+|\/+$/g, '')
-}
-
-function toPascalByPath(path: string): string {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map(toPascalToken)
-    .join('')
-}
-
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1)
-}
-
-function camelCase(str: string): string {
-  return str
-    .split('-')
-    .map((part, index) => (index === 0 ? part : capitalize(part)))
-    .join('')
-}
-
-function toKebabToken(value: string): string {
-  return value
-    .replace(/\[(.+)\]/g, '$1')
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase()
-}
-
-function toPascalToken(value: string): string {
-  return value
-    .replace(/\[(.+)\]/g, '$1')
-    .replace(/[^a-z0-9]+/gi, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(capitalize)
-    .join('')
-}
-
-function normalizeSlashes(value: string): string {
-  return value.replace(/\\/g, '/')
 }
