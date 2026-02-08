@@ -1,6 +1,5 @@
 import type { LayerAsset, LayerDef, ResourceScanConfig, ResourceType } from '@vona-js/schema'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import fg from 'fast-glob'
 import { join } from 'pathe'
 
@@ -72,6 +71,7 @@ async function scanEntry(
   rootName?: string,
 ): Promise<LayerAsset[]> {
   const base = normalizeSegment(relative, type, rootName)
+
   if (!base) {
     if (type === 'pages') {
       return [buildAsset({
@@ -89,21 +89,6 @@ async function scanEntry(
     return []
   }
 
-  if (type === 'composables' || type === 'apis') {
-    const exportNames = await parseNamedExports(join(layer.source.type === 'local' ? layer.source.root : '', relative), type)
-    return exportNames.map((name) => {
-      return buildAsset({
-        layer,
-        type,
-        relative,
-        scanKey: `${relative}#${name}`,
-        keyName: name,
-        importName: name,
-        exportType: 'named',
-      })
-    })
-  }
-
   return [buildAsset({
     layer,
     type,
@@ -119,12 +104,10 @@ interface BuildAssetOptions {
   relative: string
   scanKey: string
   keyName: string
-  importName?: string
-  exportType?: 'default' | 'named'
 }
 
 function buildAsset(options: BuildAssetOptions): LayerAsset {
-  const { layer, type, relative, scanKey, keyName, importName, exportType = 'default' } = options
+  const { layer, type, relative, scanKey, keyName } = options
   const root = layer.source.type === 'local' ? layer.source.root : ''
   const key = `${type}/${keyName}`
   const route = type === 'pages' ? createPageRoute(keyName) : undefined
@@ -150,11 +133,10 @@ function buildAsset(options: BuildAssetOptions): LayerAsset {
     },
     name: nameInfo,
     config: {
-      export: exportType,
+      export: 'default',
     },
     loader: {
       relative,
-      importName,
       dynamicImport: () => `import('${relative}')`,
     },
     route,
@@ -170,9 +152,8 @@ function resolveKeyName(type: ResourceType, normalized: string): string {
   switch (type) {
     case 'components':
     case 'layouts':
-      return toPascalByPath(normalized)
     case 'icons':
-      return `Icon${toPascalByPath(normalized)}`
+      return toPascalByPath(normalized)
     default:
       return normalized || 'index'
   }
@@ -184,81 +165,89 @@ function isAllowedByType(type: ResourceType, normalized: string): boolean {
     return type === 'pages'
   }
 
-  if (type === 'components') {
-    return segments.length <= 2
-  }
-
-  if (type === 'layouts' || type === 'composables' || type === 'apis') {
-    return segments.length === 1 || (segments.length === 2 && segments[1] === 'index')
+  if (type === 'composables' || type === 'apis' || type === 'plugins' || type === 'store' || type === 'utils') {
+    return segments.length <= 1
   }
 
   return true
 }
 
-async function parseNamedExports(absPath: string, type: ResourceType): Promise<string[]> {
-  if (!existsSync(absPath)) {
-    return []
-  }
-
-  const content = await readFile(absPath, 'utf8')
-  const matcher = /export\s+(?:async\s+)?(?:function|const|let|var)\s+([A-Za-z_$][\w$]*)/g
-  const names = new Set<string>()
-  let matched = matcher.exec(content)
-  while (matched) {
-    names.add(matched[1])
-    matched = matcher.exec(content)
-  }
-
-  const filtered = [...names].filter((name) => {
-    if (type === 'composables') {
-      return name.startsWith('use') || name.startsWith('get')
-    }
-    if (type === 'apis') {
-      return name.endsWith('Service')
-    }
-    return true
-  })
-  return filtered.sort()
+interface ParsedPageSegment {
+  pathSegment?: string
+  weight?: number
 }
 
 function createPageRoute(keyName: string): { path: string, score: number } {
   if (!keyName || keyName === 'index') {
-    return { path: '/', score: 10000 }
+    return { path: '/', score: 0 }
   }
-  const segments = keyName.split('/').filter(Boolean)
-  const mapped = segments.map((segment) => {
-    const dynamic = parseDynamicSegment(segment)
-    return dynamic ?? segment
-  })
-  const path = `/${mapped.join('/')}`
+
+  const sourceSegments = keyName.split('/').filter(Boolean)
+  const routeSegments: string[] = []
+  const weights: number[] = []
+
+  for (const segment of sourceSegments) {
+    const parsed = parsePageSegment(segment)
+    if (!parsed.pathSegment || typeof parsed.weight !== 'number') {
+      continue
+    }
+    routeSegments.push(parsed.pathSegment)
+    weights.push(parsed.weight)
+  }
+
+  const path = routeSegments.length > 0 ? `/${routeSegments.join('/')}` : '/'
+
   return {
     path,
-    score: getRouteScore(segments),
+    score: getRouteScore(weights),
   }
 }
 
-function parseDynamicSegment(segment: string): string | null {
-  const normalDynamic = segment.match(/^\[(.+)]$/)
-  if (!normalDynamic) {
-    return null
+function parsePageSegment(segment: string): ParsedPageSegment {
+  if (/^\(.+\)$/.test(segment)) {
+    return {}
   }
-  const name = normalDynamic[1]
-  if (name.startsWith('...')) {
-    return `:${name.slice(3)}(.*)`
+
+  const optional = segment.match(/^\[\[(.+)\]\]$/)
+  if (optional) {
+    return {
+      pathSegment: `:${optional[1]}?`,
+      weight: 1,
+    }
   }
-  return `:${name}`
+
+  const catchAll = segment.match(/^\[\.\.\.(.+)\]$/)
+  if (catchAll) {
+    return {
+      pathSegment: `:${catchAll[1]}(.*)*`,
+      weight: 0,
+    }
+  }
+
+  const dynamic = segment.match(/^\[(.+)\]$/)
+  if (dynamic) {
+    return {
+      pathSegment: `:${dynamic[1]}`,
+      weight: 2,
+    }
+  }
+
+  return {
+    pathSegment: segment,
+    weight: 3,
+  }
 }
 
-function getRouteScore(segments: string[]): number {
-  if (segments.length === 0) {
-    return 10000
+function getRouteScore(weights: number[]): number {
+  if (weights.length === 0) {
+    return 0
   }
+
   let score = 0
-  for (const segment of segments) {
-    score *= 10
-    score += segment.startsWith('[') ? 1 : 3
+  for (const weight of weights) {
+    score = (score * 4) + weight
   }
-  return score + segments.length
+  return score
 }
 
 function parseName(keyName: string, type: ResourceType): LayerAsset['name'] {
@@ -338,16 +327,16 @@ function camelCase(str: string): string {
 
 function toKebabToken(value: string): string {
   return value
-    .replace(/\[(.+)]/g, '$1')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/\[(.+)\]/g, '$1')
+    .replace(/[^a-z0-9]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase()
 }
 
 function toPascalToken(value: string): string {
   return value
-    .replace(/\[(.+)]/g, '$1')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\[(.+)\]/g, '$1')
+    .replace(/[^a-z0-9]+/gi, ' ')
     .trim()
     .split(/\s+/)
     .filter(Boolean)

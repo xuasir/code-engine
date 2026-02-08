@@ -1,4 +1,4 @@
-import type { LayerDef, ResourceScanConfig } from '@vona-js/schema'
+import type { LayerDef, OVFSMutation, ResourceScanConfig } from '@vona-js/schema'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAsset, scanLayer } from '../src/layer/scanner'
@@ -20,8 +20,8 @@ describe('scanner', () => {
   const resourceConfig: Record<string, ResourceScanConfig> = {
     components: { enabled: true, name: 'components', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
     layouts: { enabled: true, name: 'layouts', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
-    composables: { enabled: true, name: 'composables', pattern: ['**/*.{ts,js}'], ignore: [] },
-    apis: { enabled: true, name: 'apis', pattern: ['**/*.{ts,js}'], ignore: [] },
+    composables: { enabled: true, name: 'composables', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
+    apis: { enabled: true, name: 'apis', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
     icons: { enabled: true, name: 'icons', pattern: ['**/*.svg'], ignore: [] },
     pages: { enabled: true, name: 'pages', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
   }
@@ -30,8 +30,8 @@ describe('scanner', () => {
     const assets = await scanLayer(testLayer, resourceConfig)
 
     expect(assets.filter(asset => asset.type === 'components')).toHaveLength(4)
-    expect(assets.filter(asset => asset.type === 'layouts')).toHaveLength(2)
-    expect(assets.filter(asset => asset.type === 'composables')).toHaveLength(3)
+    expect(assets.filter(asset => asset.type === 'layouts')).toHaveLength(3)
+    expect(assets.filter(asset => asset.type === 'composables')).toHaveLength(2)
     expect(assets.filter(asset => asset.type === 'apis')).toHaveLength(2)
     expect(assets.filter(asset => asset.type === 'icons')).toHaveLength(1)
     expect(assets.filter(asset => asset.type === 'pages')).toHaveLength(3)
@@ -44,14 +44,15 @@ describe('scanner', () => {
     expect(keys).toContain('components/HelloWorld')
     expect(keys).toContain('components/TestB')
     expect(keys).toContain('components/Test')
+    expect(keys).toContain('components/UiButton')
     expect(keys).toContain('layouts/Default')
     expect(keys).toContain('layouts/Other')
+    expect(keys).toContain('layouts/OtherTest')
+    expect(keys).toContain('composables/use-user')
     expect(keys).toContain('composables/useCounter')
-    expect(keys).toContain('composables/getCounter')
-    expect(keys).toContain('composables/useUser')
-    expect(keys).toContain('apis/getOrgService')
-    expect(keys).toContain('apis/getUserService')
-    expect(keys).toContain('icons/IconLogo')
+    expect(keys).toContain('apis/org')
+    expect(keys).toContain('apis/user')
+    expect(keys).toContain('icons/Logo')
     expect(keys).toContain('pages/index')
     expect(keys).toContain('pages/users/[id]')
     expect(keys).toContain('pages/users/create')
@@ -65,6 +66,11 @@ describe('scanner', () => {
 })
 
 describe('ovfs', () => {
+  function mutateAll(ovfs: ReturnType<typeof createOVFS>, assets: ReturnType<typeof createAsset>[]): void {
+    const mutations: OVFSMutation[] = assets.map(asset => ({ op: 'upsert', asset }))
+    ovfs.mutate(mutations, { reason: 'manual' })
+  }
+
   it('should resolve winner by priority', () => {
     const ovfs = createOVFS()
 
@@ -74,10 +80,9 @@ describe('ovfs', () => {
     const asset1 = createAsset('components/Button.vue', layer1, 'components', 'components')
     const asset2 = createAsset('components/Button.vue', layer2, 'components', 'components')
 
-    ovfs.upsert(asset1)
-    ovfs.upsert(asset2)
+    mutateAll(ovfs, [asset1, asset2])
 
-    const resolved = ovfs.resolve('components/Button')
+    const resolved = ovfs.get('components/Button')
     expect(resolved?.meta.layerId).toBe('user')
     expect(resolved?.overrides?.[0].meta?.layerId).toBe('base')
   })
@@ -90,10 +95,10 @@ describe('ovfs', () => {
     const asset1 = createAsset('components/Button.vue', layer1, 'components', 'components')
     const asset2 = createAsset('components/Button.vue', layer2, 'components', 'components')
 
-    ovfs.addMany([asset1, asset2])
-    ovfs.removeById(asset2.id)
+    mutateAll(ovfs, [asset1, asset2])
+    ovfs.mutate([{ op: 'removeById', id: asset2.id }], { reason: 'manual' })
 
-    const resolved = ovfs.resolve('components/Button')
+    const resolved = ovfs.get('components/Button')
     expect(resolved?.meta.layerId).toBe('base')
   })
 
@@ -115,20 +120,20 @@ describe('ovfs', () => {
     const asset1 = createAsset('components/Button.vue', layer1, 'components', 'components')
     const asset2 = createAsset('components/Button.vue', layer2, 'components', 'components')
 
-    ovfs.addMany([asset1, asset2])
-    expect(ovfs.resolve('components/Button')?.meta.layerId).toBe('first')
+    mutateAll(ovfs, [asset1, asset2])
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('first')
   })
 
-  it('should list keys by type and all', () => {
+  it('should expose paths by entries', () => {
     const ovfs = createOVFS()
     const layer: LayerDef = { id: 'base', source: { type: 'local', root: '/base' }, priority: 10 }
 
-    ovfs.addMany([
+    mutateAll(ovfs, [
       createAsset('components/Button.vue', layer, 'components', 'components'),
       createAsset('plugins/a.ts', layer, 'plugins', 'plugins'),
     ])
 
-    expect(ovfs.list('components')).toEqual(['components/Button'])
-    expect(ovfs.list()).toEqual(['components/Button', 'plugins/a'])
+    expect(ovfs.entries('components').map(item => item.path)).toEqual(['components/Button'])
+    expect(ovfs.entries().map(item => item.path)).toEqual(['components/Button', 'plugins/a'])
   })
 })

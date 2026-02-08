@@ -1,3 +1,3 @@
-export function aPlugin() {
-  console.log('plugin a from layer1')
+export function aPlugin(): string {
+  return 'plugin a from layer1'
 }

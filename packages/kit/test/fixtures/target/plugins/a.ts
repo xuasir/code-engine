@@ -1,3 +1,3 @@
-export function aPlugin() {
-  console.log('plugin a')
+export function aPlugin(): string {
+  return 'plugin a'
 }

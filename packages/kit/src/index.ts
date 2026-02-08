@@ -1,6 +1,6 @@
 export { getVonaCtx, runWithVonaContext, setVonaCtx, tryUseVona, useVona } from './context'
-export { createDynamicLayer, createLayer, createStaticLayer, type Layer, type LayerChange, type LayerType } from './layer/layer'
-export { createPipeline, type PipelineOptions, type PipelineResult, type PipelineStats } from './layer/pipeline'
+export { createDynamicLayer, createLayer, createStaticLayer, type Layer, type LayerMutation, type LayerType } from './layer/layer'
+export { createPipeline, type PipelineOptions, type PipelineState, type PipelineStats, type PipelineStatus } from './layer/pipeline'
 export type { LayerRegistry } from './layer/registry'
 export { createLayerRegistry } from './layer/registry'
 export { createAsset, scanLayer } from './layer/scanner'

@@ -1,21 +1,10 @@
 import type { Hookable } from 'hookable'
 import type { AsyncLocalStorage } from 'node:async_hooks'
-import type { LayerAsset, ResourceManifest } from './asset'
 import type { VonaOptions } from './config'
 import type { VonaEnv } from './env'
 import type { VonaHooks } from './hooks'
-import type { ResourceType } from './layer'
 import type { VonaModule } from './module'
-
-export interface VonaOVFS {
-  resolve: (key: string) => LayerAsset | undefined
-  resolveAll: (key: string) => LayerAsset[]
-  list: (type?: ResourceType) => string[]
-  getByType: (type: ResourceType) => LayerAsset[]
-  allTypes: () => ResourceType[]
-  stats: () => { totalResources: number, byType: Record<ResourceType, number> }
-  toManifest: () => ResourceManifest
-}
+import type { OVFS } from './ovfs'
 
 export interface Vona {
   // 内部字段
@@ -40,7 +29,7 @@ export interface Vona {
   runWithContext: <T extends (...args: any[]) => any>(fn: T) => ReturnType<T>
 
   /** OVFS 实例 */
-  ovfs?: VonaOVFS
+  ovfs: OVFS
 
   /** 环境 */
   env: VonaEnv

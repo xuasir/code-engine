@@ -10,8 +10,8 @@ export default defineResolvers({
     },
     config: {
       pages: { enabled: true, name: 'pages', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
-      components: { enabled: true, name: 'components', pattern: ['*.{vue,jsx,tsx}', '**/index.{vue,jsx,tsx}'], ignore: [] },
-      layouts: { enabled: true, name: 'layouts', pattern: ['*.vue', '**/index.{vue,jsx,tsx}'], ignore: [] },
+      components: { enabled: true, name: 'components', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
+      layouts: { enabled: true, name: 'layouts', pattern: ['**/*.{vue,jsx,tsx}'], ignore: [] },
       composables: { enabled: true, name: 'composables', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
       apis: { enabled: true, name: 'apis', pattern: ['*.{ts,js}', '**/index.{ts,js}'], ignore: [] },
       icons: { enabled: true, name: 'icons', pattern: ['**/*.svg'], ignore: [] },

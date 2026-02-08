@@ -2,6 +2,7 @@ import type { Schema, SchemaDefinition } from 'untyped'
 import type { LayerAsset } from './asset'
 import type { Vona } from './engine'
 import type { ResourceType } from './layer'
+import type { OVFSResourceChange } from './ovfs'
 
 export type HookResult = Promise<void> | void
 
@@ -33,9 +34,9 @@ export interface VonaHooks {
    */
   'layer:loaded': (layerMap: Record<ResourceType, LayerAsset[]>, vona: Vona) => HookResult
   /**
-   * layer 变更
+   * ovfs 变更
    */
-  'layer:change': (type: ResourceType, layers: LayerAsset[], vona: Vona) => HookResult
+  'ovfs:change': (changes: OVFSResourceChange[], vona: Vona) => HookResult
 
   /**
    * 代码引擎应用写入 vite 配置文件

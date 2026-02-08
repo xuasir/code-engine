@@ -1,4 +1,13 @@
-import type { LayerAsset, ResourceManifest, ResourceType } from '@vona-js/schema'
+import type {
+  LayerAsset,
+  OVFS,
+  OVFSChangeReason,
+  OVFSEntry,
+  OVFSMutation,
+  OVFSResourceChange,
+  ResourceManifest,
+  ResourceType,
+} from '@vona-js/schema'
 
 const ResourceTypeValues: ResourceType[] = [
   'layouts',
@@ -12,31 +21,6 @@ const ResourceTypeValues: ResourceType[] = [
   'styles',
   'plugins',
 ]
-
-export interface OVFS {
-  add: (asset: LayerAsset) => void
-  upsert: (asset: LayerAsset) => void
-  addMany: (assets: LayerAsset[]) => void
-  removeById: (id: string) => LayerAsset | undefined
-  resolve: (key: string) => LayerAsset | undefined
-  resolveAll: (key: string) => LayerAsset[]
-  list: (type?: ResourceType) => string[]
-  getById: (id: string) => LayerAsset | undefined
-  glob: (pattern: string) => LayerAsset[]
-  getByType: (type: ResourceType) => LayerAsset[]
-  allTypes: () => ResourceType[]
-  stats: () => { totalResources: number, byType: Record<ResourceType, number> }
-  toManifest: () => ResourceManifest
-}
-
-function patternToRegex(pattern: string): RegExp {
-  const escaped = pattern
-    .replace(/\//g, '\\/')
-    .replace(/\*\*/g, '§§§')
-    .replace(/\*/g, '[^/]*')
-    .replace(/§§§/g, '.*')
-  return new RegExp(`^${escaped}$`)
-}
 
 function toOverride(asset: LayerAsset): Partial<LayerAsset> {
   return {
@@ -64,54 +48,74 @@ function compareAsset(a: LayerAsset, b: LayerAsset): number {
   return a.id.localeCompare(b.id)
 }
 
+function isStackEqual(before: LayerAsset[], after: LayerAsset[]): boolean {
+  if (before.length !== after.length) {
+    return false
+  }
+  for (let i = 0; i < before.length; i++) {
+    const left = before[i]
+    const right = after[i]
+    if (left.id !== right.id || left !== right) {
+      return false
+    }
+  }
+  return true
+}
+
 export function createOVFS(): OVFS {
-  const byKey = new Map<string, LayerAsset[]>()
+  const byPath = new Map<string, LayerAsset[]>()
   const byType = new Map<ResourceType, Map<string, LayerAsset>>()
   const byId = new Map<string, LayerAsset>()
+  const callbacks: Array<(changes: OVFSResourceChange[]) => void> = []
 
-  const setWinner = (asset: LayerAsset) => {
-    const stack = byKey.get(asset.key) ?? []
-    asset.overrides = stack.slice(1).map(toOverride)
-    if (!byType.has(asset.type)) {
-      byType.set(asset.type, new Map<string, LayerAsset>())
+  const removeWinner = (type: ResourceType, path: string): void => {
+    byType.get(type)?.delete(path)
+  }
+
+  const setWinner = (path: string): void => {
+    const stack = byPath.get(path) ?? []
+    const winner = stack[0]
+    if (!winner) {
+      return
     }
-    byType.get(asset.type)!.set(asset.key, asset)
+
+    winner.overrides = stack.slice(1).map(toOverride)
+    if (!byType.has(winner.type)) {
+      byType.set(winner.type, new Map<string, LayerAsset>())
+    }
+    byType.get(winner.type)!.set(path, winner)
   }
 
-  const removeWinner = (type: ResourceType, key: string) => {
-    byType.get(type)?.delete(key)
-  }
-
-  const syncOne = (key: string, type: ResourceType) => {
-    const stack = byKey.get(key) ?? []
+  const syncPath = (path: string, type: ResourceType): void => {
+    const stack = byPath.get(path) ?? []
     if (stack.length === 0) {
-      byKey.delete(key)
-      removeWinner(type, key)
+      byPath.delete(path)
+      removeWinner(type, path)
       return
     }
 
     stack.sort(compareAsset)
-    byKey.set(key, stack)
-    setWinner(stack[0])
+    byPath.set(path, stack)
+    setWinner(path)
   }
 
-  const upsertAsset = (asset: LayerAsset) => {
+  const upsertAsset = (asset: LayerAsset): void => {
     const previous = byId.get(asset.id)
     if (previous && previous.key !== asset.key) {
-      const previousStack = (byKey.get(previous.key) ?? []).filter(item => item.id !== previous.id)
+      const previousStack = (byPath.get(previous.key) ?? []).filter(item => item.id !== previous.id)
       if (previousStack.length === 0) {
-        byKey.delete(previous.key)
+        byPath.delete(previous.key)
         removeWinner(previous.type, previous.key)
       }
       else {
-        byKey.set(previous.key, previousStack)
-        syncOne(previous.key, previous.type)
+        byPath.set(previous.key, previousStack)
+        syncPath(previous.key, previous.type)
       }
     }
 
     byId.set(asset.id, asset)
 
-    const nextStack = byKey.get(asset.key) ?? []
+    const nextStack = byPath.get(asset.key) ?? []
     const index = nextStack.findIndex(item => item.id === asset.id)
     if (index >= 0) {
       nextStack[index] = asset
@@ -119,117 +123,215 @@ export function createOVFS(): OVFS {
     else {
       nextStack.push(asset)
     }
-    byKey.set(asset.key, nextStack)
-    syncOne(asset.key, asset.type)
+
+    byPath.set(asset.key, nextStack)
+    syncPath(asset.key, asset.type)
+  }
+
+  const removeByIdInternal = (id: string): LayerAsset | undefined => {
+    const current = byId.get(id)
+    if (!current) {
+      return undefined
+    }
+
+    byId.delete(id)
+    const nextStack = (byPath.get(current.key) ?? []).filter(item => item.id !== id)
+    if (nextStack.length === 0) {
+      byPath.delete(current.key)
+      removeWinner(current.type, current.key)
+    }
+    else {
+      byPath.set(current.key, nextStack)
+      syncPath(current.key, current.type)
+    }
+
+    return current
+  }
+
+  const emitChange = (changes: OVFSResourceChange[]): void => {
+    if (changes.length === 0) {
+      return
+    }
+    callbacks.forEach(cb => cb(changes))
+  }
+
+  const mutate = (
+    mutations: OVFSMutation[],
+    options?: { silent?: boolean, reason?: OVFSChangeReason },
+  ): OVFSResourceChange[] => {
+    if (mutations.length === 0) {
+      return []
+    }
+
+    const reason = options?.reason
+    const touchedPaths: string[] = []
+    const beforeMap = new Map<string, LayerAsset | undefined>()
+    const beforeStackMap = new Map<string, LayerAsset[]>()
+
+    const touchPath = (path: string): void => {
+      if (!beforeStackMap.has(path)) {
+        beforeMap.set(path, byPath.get(path)?.[0])
+        beforeStackMap.set(path, [...(byPath.get(path) ?? [])])
+        touchedPaths.push(path)
+      }
+    }
+
+    for (const mutation of mutations) {
+      if (mutation.op === 'upsert') {
+        const previousById = byId.get(mutation.asset.id)
+        if (previousById && previousById.key !== mutation.asset.key) {
+          touchPath(previousById.key)
+        }
+        touchPath(mutation.asset.key)
+        upsertAsset(mutation.asset)
+        continue
+      }
+
+      const current = byId.get(mutation.id)
+      if (!current) {
+        continue
+      }
+      touchPath(current.key)
+      removeByIdInternal(mutation.id)
+    }
+
+    const changes: OVFSResourceChange[] = []
+
+    for (const path of touchedPaths) {
+      const before = beforeMap.get(path)
+      const after = byPath.get(path)?.[0]
+      const beforeStack = beforeStackMap.get(path) ?? []
+      const afterStack = [...(byPath.get(path) ?? [])]
+
+      if (!before && after) {
+        changes.push({
+          type: 'add',
+          path,
+          resourceType: after.type,
+          before,
+          after,
+          beforeStack,
+          afterStack,
+          reason,
+        })
+        continue
+      }
+
+      if (before && !after) {
+        changes.push({
+          type: 'unlink',
+          path,
+          resourceType: before.type,
+          before,
+          after,
+          beforeStack,
+          afterStack,
+          reason,
+        })
+        continue
+      }
+
+      if (before && after) {
+        if (before.id !== after.id || before !== after || !isStackEqual(beforeStack, afterStack)) {
+          changes.push({
+            type: 'change',
+            path,
+            resourceType: after.type,
+            before,
+            after,
+            beforeStack,
+            afterStack,
+            reason,
+          })
+        }
+      }
+    }
+
+    if (!options?.silent) {
+      emitChange(changes)
+    }
+
+    return changes
+  }
+
+  const entries = (type?: ResourceType): OVFSEntry[] => {
+    const rows: OVFSEntry[] = []
+
+    const collectByType = (resourceType: ResourceType): void => {
+      const winners = byType.get(resourceType)
+      if (!winners) {
+        return
+      }
+      const paths = [...winners.keys()].sort((a, b) => a.localeCompare(b))
+      for (const path of paths) {
+        const winner = winners.get(path)
+        if (!winner) {
+          continue
+        }
+        rows.push({
+          path,
+          type: resourceType,
+          winner,
+          stack: [...(byPath.get(path) ?? [])],
+        })
+      }
+    }
+
+    if (type) {
+      collectByType(type)
+      return rows
+    }
+
+    for (const resourceType of ResourceTypeValues) {
+      collectByType(resourceType)
+    }
+
+    return rows
   }
 
   return {
-    add: (asset) => {
-      upsertAsset(asset)
+    get: (path) => {
+      return byPath.get(path)?.[0]
     },
 
-    upsert: (asset) => {
-      upsertAsset(asset)
+    getStack: (path) => {
+      return [...(byPath.get(path) ?? [])]
     },
 
-    addMany: (assets) => {
-      for (const asset of assets) {
-        byId.set(asset.id, asset)
-        const stack = byKey.get(asset.key) ?? []
-        const index = stack.findIndex(item => item.id === asset.id)
+    has: (path) => {
+      return (byPath.get(path)?.length ?? 0) > 0
+    },
+
+    entries,
+
+    mutate,
+
+    subscribe: (callback) => {
+      callbacks.push(callback)
+      return () => {
+        const index = callbacks.indexOf(callback)
         if (index >= 0) {
-          stack[index] = asset
-        }
-        else {
-          stack.push(asset)
-        }
-        byKey.set(asset.key, stack)
-      }
-      for (const [key, stack] of byKey.entries()) {
-        if (stack.length === 0) {
-          continue
-        }
-        syncOne(key, stack[0].type)
-      }
-    },
-
-    removeById: (id) => {
-      const current = byId.get(id)
-      if (!current) {
-        return undefined
-      }
-      byId.delete(id)
-
-      const nextStack = (byKey.get(current.key) ?? []).filter(item => item.id !== id)
-      if (nextStack.length === 0) {
-        byKey.delete(current.key)
-        removeWinner(current.type, current.key)
-      }
-      else {
-        byKey.set(current.key, nextStack)
-        syncOne(current.key, current.type)
-      }
-      return current
-    },
-
-    resolve: (key) => {
-      return byKey.get(key)?.[0]
-    },
-
-    resolveAll: (key) => {
-      return [...(byKey.get(key) ?? [])]
-    },
-
-    list: (type) => {
-      if (type) {
-        return [...(byType.get(type)?.keys() ?? [])].sort((a, b) => a.localeCompare(b))
-      }
-      const keys: string[] = []
-      for (const resourceType of ResourceTypeValues) {
-        keys.push(...(byType.get(resourceType)?.keys() ?? []))
-      }
-      return keys.sort((a, b) => a.localeCompare(b))
-    },
-
-    getById: (id) => {
-      return byId.get(id)
-    },
-
-    glob: (pattern) => {
-      const matcher = patternToRegex(pattern)
-      const result: LayerAsset[] = []
-      for (const type of ResourceTypeValues) {
-        const winners = byType.get(type)
-        if (!winners) {
-          continue
-        }
-        for (const asset of winners.values()) {
-          if (matcher.test(asset.key)) {
-            result.push(asset)
-          }
+          callbacks.splice(index, 1)
         }
       }
-      return result
     },
 
-    getByType: (type) => {
-      const winners = byType.get(type)
-      if (!winners) {
-        return []
-      }
-      return [...winners.values()].sort((a, b) => a.key.localeCompare(b.key))
+    clear: () => {
+      byPath.clear()
+      byType.clear()
+      byId.clear()
     },
-
-    allTypes: () => ResourceTypeValues,
 
     stats: () => {
       const byTypeMap = {} as Record<ResourceType, number>
       let total = 0
+
       for (const type of ResourceTypeValues) {
         const size = byType.get(type)?.size ?? 0
         byTypeMap[type] = size
         total += size
       }
+
       return {
         totalResources: total,
         byType: byTypeMap,

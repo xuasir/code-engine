@@ -1,5 +1,5 @@
-export { createDynamicLayer, createLayer, createStaticLayer, type Layer, type LayerChange, type LayerType } from './layer'
-export { createPipeline, type PipelineOptions, type PipelineResult, type PipelineStats } from './pipeline'
+export { createDynamicLayer, createLayer, createStaticLayer, type Layer, type LayerMutation, type LayerType } from './layer'
+export { createPipeline, type PipelineOptions, type PipelineState, type PipelineStats, type PipelineStatus } from './pipeline'
 export type { LayerRegistry } from './registry'
 export { createLayerRegistry } from './registry'
 export { createAsset, scanLayer } from './scanner'

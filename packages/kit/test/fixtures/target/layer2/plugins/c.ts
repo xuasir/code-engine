@@ -1,3 +1,3 @@
-export function cPlugin() {
-  console.log('plugin c from layer2')
+export function cPlugin(): string {
+  return 'plugin c from layer2'
 }

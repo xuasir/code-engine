@@ -1,3 +1,3 @@
-export function bPlugin() {
-  console.log('plugin b from layer2')
+export function bPlugin(): string {
+  return 'plugin b from layer2'
 }

@@ -3,13 +3,13 @@ import type { PackageJson } from 'pkg-types'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { createEnv, installModules, loadEnv, loadVonaConfig, resolveModules, runWithVonaContext, setVonaCtx } from '@vona-js/kit'
+import { createEnv, createOVFS, installModules, loadEnv, loadVonaConfig, resolveModules, runWithVonaContext, setVonaCtx } from '@vona-js/kit'
 import { VonaMode } from '@vona-js/schema'
 import { createHooks } from 'hookable'
 import { readPackageJSON } from 'pkg-types'
 import { version } from '../../package.json'
 import GenerateModule from './generate/module'
-import { LayerModule } from './modules/layer'
+import { LayerModule } from './layer/module'
 
 export interface LoadVonaOptions {
   command: VonaOptions['__command']
@@ -68,6 +68,7 @@ function createVona(options: VonaOptions): Vona {
     hook: hooks.hook.bind(hooks),
     callHook: hooks.callHook,
     addHooks: hooks.addHooks.bind(hooks),
+    ovfs: createOVFS(),
     env: createEnv(options.__rootDir, options.__mode),
     ready: () => runWithVonaContext(vona, () => initVona(vona)),
     close: () => vona.callHook('close', vona),

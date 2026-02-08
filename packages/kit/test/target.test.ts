@@ -1,10 +1,24 @@
-import type { LayerConfig, LayerDef, ResourceScanConfig } from '@vona-js/schema'
+import type { LayerConfig, LayerDef, OVFSMutation, ResourceScanConfig } from '@vona-js/schema'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createPipeline } from '../src/layer/pipeline'
 import { createLayerRegistry } from '../src/layer/registry'
 import { createAsset, scanLayer } from '../src/layer/scanner'
 import { createOVFS } from '../src/ovfs/ovfs'
+
+async function withPipeline<T>(rootDir: string, handler: (pipeline: ReturnType<typeof createPipeline>) => Promise<T>): Promise<T> {
+  const pipeline = createPipeline({ rootDir })
+  try {
+    return await handler(pipeline)
+  }
+  finally {
+    await pipeline.stop()
+  }
+}
+
+function toUpsertMutations(assets: ReturnType<typeof createAsset>[]): OVFSMutation[] {
+  return assets.map(asset => ({ op: 'upsert', asset }))
+}
 
 describe('target.md - 配置测试', () => {
   const fixturesDir = join(__dirname, 'fixtures', 'target')
@@ -19,6 +33,34 @@ describe('target.md - 配置测试', () => {
     expect(config.layer.defs[0].priority).toBe(100)
     expect(config.layer.remote?.cacheDir).toBe('.vona/layers')
     expect(config.layer.remote?.preferCache).toBe(true)
+  })
+
+  it('layer.enabled=false 仅关闭 src 自动注册，不影响 defs', async () => {
+    const semanticFixturesDir = join(__dirname, 'fixtures', 'enabled-semantic')
+    const baseConfig = {
+      defs: [
+        { id: 'core', source: { type: 'local' as const, root: './layer', dynamic: false }, priority: 100 },
+      ],
+    }
+
+    const disabledIds = await withPipeline(semanticFixturesDir, async (pipeline) => {
+      await pipeline.start({
+        enabled: false,
+        ...baseConfig,
+      })
+      return pipeline.state().registry.getOrdered().map(layer => layer.id)
+    })
+
+    const enabledIds = await withPipeline(semanticFixturesDir, async (pipeline) => {
+      await pipeline.start({
+        enabled: true,
+        ...baseConfig,
+      })
+      return pipeline.state().registry.getOrdered().map(layer => layer.id)
+    })
+
+    expect(disabledIds).toEqual(['core'])
+    expect(enabledIds).toEqual(['user', 'core'])
   })
 })
 
@@ -62,12 +104,12 @@ describe('target.md - 浅层扫描测试 (plugins)', () => {
     const assets1 = await scanLayer(layer1, pluginsConfig)
     const assets2 = await scanLayer(layer2, pluginsConfig)
     const ovfs = createOVFS()
-    ovfs.addMany([...assets1, ...assets2])
+    ovfs.mutate(toUpsertMutations([...assets1, ...assets2]), { reason: 'manual' })
 
-    const resolved = ovfs.resolve('plugins/b')
+    const resolved = ovfs.get('plugins/b')
     expect(resolved?.meta.layerId).toBe('layer2')
 
-    const stack = ovfs.resolveAll('plugins/b')
+    const stack = ovfs.getStack('plugins/b')
     expect(stack).toHaveLength(2)
     expect(stack[0].meta.layerId).toBe('layer2')
     expect(stack[1].meta.layerId).toBe('layer1')
@@ -118,12 +160,12 @@ describe('target.md - 文件路由扫描测试 (pages)', () => {
     const assets1 = await scanLayer(layer1, pagesConfig)
     const assets2 = await scanLayer(layer2, pagesConfig)
     const ovfs = createOVFS()
-    ovfs.addMany([...assets1, ...assets2])
+    ovfs.mutate(toUpsertMutations([...assets1, ...assets2]), { reason: 'manual' })
 
-    const resolved = ovfs.resolve('pages/b')
+    const resolved = ovfs.get('pages/b')
     expect(resolved?.meta.layerId).toBe('layer2')
 
-    const stack = ovfs.resolveAll('pages/b')
+    const stack = ovfs.getStack('pages/b')
     expect(stack).toHaveLength(2)
     expect(stack[0].meta.layerId).toBe('layer2')
     expect(stack[1].meta.layerId).toBe('layer1')
@@ -164,30 +206,31 @@ describe('target.md - 堆结构管理层测试', () => {
 
   it('pipeline 层启动顺序应与 registry 保持一致', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    const pipeline = createPipeline({ rootDir: fixturesDir })
-
-    const layerConfig: LayerConfig = {
-      enabled: true,
-      defs: [
-        { id: 'a', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-        { id: 'b', source: { type: 'local', root: './layer2', dynamic: false }, priority: 100 },
-        { id: 'c', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-      ],
-      config: {
-        plugins: {
-          enabled: true,
-          name: 'plugins',
-          pattern: ['**/*.{ts,js}'],
-          ignore: [],
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: true,
+        defs: [
+          { id: 'a', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+          { id: 'b', source: { type: 'local', root: './layer2', dynamic: false }, priority: 100 },
+          { id: 'c', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+        ],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
         },
-      },
-    }
+      }
 
-    const result = await pipeline.run(layerConfig)
-    const orderedByRegistry = result.registry.getOrdered().map(layer => layer.id)
-    const startedOrder = result.layers.map(layer => layer.def.id)
-    expect(startedOrder).toEqual(orderedByRegistry)
-    expect(startedOrder).toEqual(['a', 'b', 'c'])
+      await pipeline.start(layerConfig)
+      const state = pipeline.state()
+      const orderedByRegistry = state.registry.getOrdered().map(layer => layer.id)
+      const startedOrder = state.layers.map(layer => layer.def.id)
+      expect(startedOrder).toEqual(orderedByRegistry)
+      expect(startedOrder).toEqual(['a', 'b', 'c'])
+    })
   })
 
   it('pipeline 应复用传入的 ovfs 实例', async () => {
@@ -198,6 +241,35 @@ describe('target.md - 堆结构管理层测试', () => {
       ovfs: injectedOVFS,
     })
 
+    try {
+      const layerConfig: LayerConfig = {
+        enabled: true,
+        defs: [
+          { id: 'layer1', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+        ],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
+        },
+      }
+
+      await pipeline.start(layerConfig)
+      const state = pipeline.state()
+      expect(state.ovfs).toBe(injectedOVFS)
+      expect(injectedOVFS.get('plugins/a')).toBeTruthy()
+    }
+    finally {
+      await pipeline.stop()
+    }
+  })
+
+  it('pipeline 应具备状态机语义，重复 start 抛错，stop 幂等', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const pipeline = createPipeline({ rootDir: fixturesDir })
     const layerConfig: LayerConfig = {
       enabled: true,
       defs: [
@@ -213,9 +285,14 @@ describe('target.md - 堆结构管理层测试', () => {
       },
     }
 
-    const result = await pipeline.run(layerConfig)
-    expect(result.ovfs).toBe(injectedOVFS)
-    expect(injectedOVFS.resolve('plugins/a')).toBeTruthy()
+    expect(pipeline.state().status).toBe('idle')
+    await pipeline.start(layerConfig)
+    expect(pipeline.state().status).toBe('running')
+    await expect(pipeline.start(layerConfig)).rejects.toThrow('Pipeline already running')
+    await pipeline.stop()
+    expect(pipeline.state().status).toBe('stopped')
+    await pipeline.stop()
+    expect(pipeline.state().status).toBe('stopped')
   })
 })
 
@@ -226,12 +303,85 @@ describe('target.md - OVFS 资源管理测试', () => {
     const layer1: LayerDef = { id: 'base', source: { type: 'local', root: '/base' }, priority: 10 }
     const layer2: LayerDef = { id: 'user', source: { type: 'local', root: '/user' }, priority: 100 }
 
-    ovfs.upsert(createAsset('components/Button.vue', layer1, 'components', 'components'))
-    ovfs.upsert(createAsset('components/Button.vue', layer2, 'components', 'components'))
+    ovfs.mutate(toUpsertMutations([
+      createAsset('components/Button.vue', layer1, 'components', 'components'),
+      createAsset('components/Button.vue', layer2, 'components', 'components'),
+    ]), { reason: 'manual' })
 
-    const resolved = ovfs.resolve('components/Button')
+    const resolved = ovfs.get('components/Button')
     expect(resolved?.meta.layerId).toBe('user')
     expect(resolved?.overrides?.[0].meta?.layerId).toBe('base')
+  })
+
+  it('ovfs.mutate 应产出 winner 变更事件，支持回退与批量去重', () => {
+    const ovfs = createOVFS()
+    const changes: Array<{ type: string, path: string, reason: string | undefined }> = []
+    const off = ovfs.subscribe((items) => {
+      changes.push(...items.map(item => ({ type: item.type, path: item.path, reason: item.reason })))
+    })
+
+    const baseLayer: LayerDef = { id: 'base', source: { type: 'local', root: '/base' }, priority: 10 }
+    const highLayer: LayerDef = { id: 'high', source: { type: 'local', root: '/high' }, priority: 100 }
+    const base = createAsset('components/Button.vue', baseLayer, 'components', 'components')
+    const high = createAsset('components/Button.vue', highLayer, 'components', 'components')
+    const changedHigh = {
+      ...high,
+      loader: {
+        ...high.loader,
+        dynamicImport: () => `import('${high.path.relative}?v=2')`,
+      },
+    }
+
+    const first = ovfs.mutate([{ op: 'upsert', asset: base }], { reason: 'add' })
+    expect(first).toHaveLength(1)
+    expect(first[0].type).toBe('add')
+    expect(first[0].path).toBe('components/Button')
+    expect(first[0].afterStack).toHaveLength(1)
+
+    const second = ovfs.mutate([{ op: 'upsert', asset: high }], { reason: 'change' })
+    expect(second).toHaveLength(1)
+    expect(second[0].type).toBe('change')
+    expect(second[0].beforeStack).toHaveLength(1)
+    expect(second[0].afterStack).toHaveLength(2)
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('high')
+
+    const third = ovfs.mutate([{ op: 'upsert', asset: changedHigh }], { reason: 'change' })
+    expect(third).toHaveLength(1)
+    expect(third[0].type).toBe('change')
+    expect(third[0].before?.id).toBe(high.id)
+    expect(third[0].after?.id).toBe(high.id)
+
+    const fourth = ovfs.mutate([{ op: 'removeById', id: high.id }], { reason: 'unlink' })
+    expect(fourth).toHaveLength(1)
+    expect(fourth[0].type).toBe('change')
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('base')
+
+    const fifth = ovfs.mutate([{ op: 'removeById', id: base.id }], { reason: 'unlink' })
+    expect(fifth).toHaveLength(1)
+    expect(fifth[0].type).toBe('unlink')
+    expect(fifth[0].beforeStack).toHaveLength(1)
+    expect(fifth[0].afterStack).toHaveLength(0)
+    expect(ovfs.get('components/Button')).toBeUndefined()
+
+    const batch = ovfs.mutate(
+      [
+        { op: 'upsert', asset: base },
+        { op: 'upsert', asset: changedHigh },
+        { op: 'upsert', asset: high },
+      ],
+      { reason: 'change' },
+    )
+    expect(batch).toHaveLength(1)
+    expect(batch[0].path).toBe('components/Button')
+    expect(batch[0].type).toBe('add')
+
+    ovfs.mutate([{ op: 'removeById', id: high.id }], { reason: 'unlink', silent: true })
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('base')
+    expect(changes.some(item => item.reason === 'unlink' && item.type === 'change')).toBe(true)
+
+    off()
+    ovfs.mutate([{ op: 'removeById', id: base.id }], { reason: 'unlink' })
+    expect(changes.filter(item => item.type === 'unlink').length).toBe(1)
   })
 })
 
@@ -242,11 +392,11 @@ describe('target.md - 动态层最小变更测试', () => {
     const highLayer: LayerDef = { id: 'high', source: { type: 'local', root: '/high' }, priority: 100 }
 
     const lowButton = createAsset('components/Button.vue', lowLayer, 'components', 'components')
-    ovfs.addMany([lowButton])
+    ovfs.mutate([{ op: 'upsert', asset: lowButton }], { reason: 'manual' })
 
     const highButton = createAsset('components/Button.vue', highLayer, 'components', 'components')
-    ovfs.upsert(highButton)
-    expect(ovfs.resolve('components/Button')?.meta.layerId).toBe('high')
+    ovfs.mutate([{ op: 'upsert', asset: highButton }], { reason: 'manual' })
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('high')
 
     const changedHighButton = {
       ...highButton,
@@ -255,84 +405,86 @@ describe('target.md - 动态层最小变更测试', () => {
         dynamicImport: () => `import('${highButton.path.relative}?v=2')`,
       },
     }
-    ovfs.upsert(changedHighButton)
-    expect(ovfs.resolve('components/Button')?.id).toBe(changedHighButton.id)
+    ovfs.mutate([{ op: 'upsert', asset: changedHighButton }], { reason: 'manual' })
+    expect(ovfs.get('components/Button')?.id).toBe(changedHighButton.id)
 
     const highNew = createAsset('components/New.vue', highLayer, 'components', 'components')
-    ovfs.upsert(highNew)
-    expect(ovfs.resolve('components/New')?.meta.layerId).toBe('high')
+    ovfs.mutate([{ op: 'upsert', asset: highNew }], { reason: 'manual' })
+    expect(ovfs.get('components/New')?.meta.layerId).toBe('high')
 
-    ovfs.removeById(highButton.id)
-    expect(ovfs.resolve('components/Button')?.meta.layerId).toBe('low')
+    ovfs.mutate([{ op: 'removeById', id: highButton.id }], { reason: 'manual' })
+    expect(ovfs.get('components/Button')?.meta.layerId).toBe('low')
 
-    ovfs.removeById(highNew.id)
-    expect(ovfs.resolve('components/New')).toBeUndefined()
+    ovfs.mutate([{ op: 'removeById', id: highNew.id }], { reason: 'manual' })
+    expect(ovfs.get('components/New')).toBeUndefined()
   })
 })
 
 describe('target.md - remote 占位测试', () => {
   it('cache 命中时应扫描 remote layer', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'remote')
-    const pipeline = createPipeline({ rootDir: fixturesDir })
-
-    const layerConfig: LayerConfig = {
-      enabled: true,
-      defs: [
-        {
-          id: 'remote-core',
-          source: { type: 'remote', root: '@scope/core' },
-          priority: 50,
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: true,
+        defs: [
+          {
+            id: 'remote-core',
+            source: { type: 'remote', root: '@scope/core' },
+            priority: 50,
+          },
+        ],
+        remote: {
+          cacheDir: '.vona/layers',
+          preferCache: true,
         },
-      ],
-      remote: {
-        cacheDir: '.vona/layers',
-        preferCache: true,
-      },
-      config: {
-        plugins: {
-          enabled: true,
-          name: 'plugins',
-          pattern: ['**/*.{ts,js}'],
-          ignore: [],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
         },
-      },
-    }
+      }
 
-    const result = await pipeline.run(layerConfig)
-    expect(result.ovfs.resolve('plugins/remote')).toBeTruthy()
+      await pipeline.start(layerConfig)
+      expect(pipeline.state().ovfs.get('plugins/remote')).toBeTruthy()
+    })
   })
 
   it('cache 缺失时应跳过 remote layer 且告警', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    const pipeline = createPipeline({ rootDir: fixturesDir })
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    const layerConfig: LayerConfig = {
-      enabled: true,
-      defs: [
-        {
-          id: 'remote-missing',
-          source: { type: 'remote', root: '@scope/missing' },
-          priority: 50,
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: true,
+        defs: [
+          {
+            id: 'remote-missing',
+            source: { type: 'remote', root: '@scope/missing' },
+            priority: 50,
+          },
+        ],
+        remote: {
+          cacheDir: '.vona/layers',
+          preferCache: true,
         },
-      ],
-      remote: {
-        cacheDir: '.vona/layers',
-        preferCache: true,
-      },
-      config: {
-        plugins: {
-          enabled: true,
-          name: 'plugins',
-          pattern: ['**/*.{ts,js}'],
-          ignore: [],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
         },
-      },
-    }
+      }
 
-    const result = await pipeline.run(layerConfig)
-    expect(result.ovfs.getByType('plugins')).toHaveLength(0)
-    expect(warnSpy).toHaveBeenCalledTimes(1)
+      await pipeline.start(layerConfig)
+      expect(pipeline.state().ovfs.entries('plugins')).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+    })
+
     warnSpy.mockRestore()
   })
 })

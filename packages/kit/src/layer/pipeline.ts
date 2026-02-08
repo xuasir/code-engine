@@ -1,6 +1,12 @@
-import type { LayerConfig, LayerDef, ResourceScanConfig } from '@vona-js/schema'
-import type { OVFS } from '../ovfs/ovfs'
-import type { Layer, LayerChange } from './layer'
+import type {
+  LayerConfig,
+  LayerDef,
+  OVFS,
+  OVFSChangeReason,
+  OVFSMutation,
+  ResourceScanConfig,
+} from '@vona-js/schema'
+import type { Layer, LayerMutation } from './layer'
 import type { LayerRegistry } from './registry'
 import { existsSync } from 'node:fs'
 import { PRIORITY } from '@vona-js/schema'
@@ -8,13 +14,6 @@ import { isAbsolute, join, normalize, resolve } from 'pathe'
 import { createOVFS } from '../ovfs/ovfs'
 import { createLayer } from './layer'
 import { createLayerRegistry } from './registry'
-
-export interface PipelineResult {
-  registry: LayerRegistry
-  ovfs: OVFS
-  layers: Layer[]
-  stats: PipelineStats
-}
 
 export interface PipelineStats {
   layerCount: number
@@ -24,9 +23,33 @@ export interface PipelineStats {
   dynamicLayers: number
 }
 
+export type PipelineStatus = 'idle' | 'running' | 'stopped'
+
+export interface PipelineState {
+  status: PipelineStatus
+  registry: LayerRegistry
+  ovfs: OVFS
+  layers: Layer[]
+  stats: PipelineStats
+}
+
 export interface PipelineOptions {
   rootDir: string
   ovfs?: OVFS
+}
+
+export interface Pipeline {
+  start: (config: LayerConfig) => Promise<void>
+  stop: () => Promise<void>
+  state: () => PipelineState
+}
+
+const EMPTY_STATS: PipelineStats = {
+  layerCount: 0,
+  rawAssetCount: 0,
+  resolvedAssetCount: 0,
+  staticLayers: 0,
+  dynamicLayers: 0,
 }
 
 function getUserSrcLayer(root: string): LayerDef | null {
@@ -116,171 +139,162 @@ function materializeRemoteLayer(rootDir: string, config: LayerConfig, def: Layer
   return null
 }
 
-export function createPipeline(options: PipelineOptions) {
-  const { rootDir, ovfs: providedOVFS } = options
+function toReason(reason: LayerMutation['reason'] | undefined): OVFSChangeReason {
+  switch (reason) {
+    case 'add':
+      return 'add'
+    case 'change':
+      return 'change'
+    case 'unlink':
+      return 'unlink'
+    default:
+      return 'manual'
+  }
+}
 
-  return {
-    async run(config: LayerConfig): Promise<PipelineResult> {
-      const registry = createLayerRegistry()
-      const ovfs = providedOVFS ?? createOVFS()
-      const layers: Layer[] = []
-      const resourceConfig: Record<string, ResourceScanConfig> = {}
-      for (const [type, scanConfig] of Object.entries(config.config ?? {})) {
-        if (scanConfig) {
-          resourceConfig[type] = scanConfig
-        }
+function normalizeMutations(mutations: LayerMutation[]): {
+  mutations: OVFSMutation[]
+  reason: OVFSChangeReason
+} {
+  const normalized: OVFSMutation[] = mutations.map((mutation) => {
+    if (mutation.op === 'upsert') {
+      return {
+        op: 'upsert',
+        asset: mutation.asset,
       }
+    }
+    return {
+      op: 'removeById',
+      id: mutation.id,
+    }
+  })
+  return {
+    mutations: normalized,
+    reason: toReason(mutations[0]?.reason),
+  }
+}
 
-      assertValidResourceConfig(config)
+export function createPipeline(options: PipelineOptions): Pipeline {
+  const { rootDir, ovfs: providedOVFS } = options
+  const ovfs = providedOVFS ?? createOVFS()
+  let status: PipelineStatus = 'idle'
+  let registry = createLayerRegistry()
+  let layers: Layer[] = []
+  let stats: PipelineStats = { ...EMPTY_STATS }
 
-      const sourceDefs = [...(config.defs ?? [])].map(def => resolveLayerDefRoot(rootDir, def))
+  const stop = async (): Promise<void> => {
+    if (layers.length > 0) {
+      for (const layer of layers) {
+        layer.stop()
+      }
+    }
+    layers = []
+    registry = createLayerRegistry()
+    stats = { ...EMPTY_STATS }
+    ovfs.clear()
+    status = 'stopped'
+  }
+
+  const start = async (config: LayerConfig): Promise<void> => {
+    if (status === 'running') {
+      throw new Error('Pipeline already running')
+    }
+
+    await stop()
+
+    const resourceConfig: Record<string, ResourceScanConfig> = {}
+    for (const [type, scanConfig] of Object.entries(config.config ?? {})) {
+      if (scanConfig) {
+        resourceConfig[type] = scanConfig
+      }
+    }
+
+    assertValidResourceConfig(config)
+
+    const sourceDefs = [...(config.defs ?? [])].map(def => resolveLayerDefRoot(rootDir, def))
+    if (config.enabled) {
       const userSrcLayer = getUserSrcLayer(rootDir)
       if (userSrcLayer) {
         sourceDefs.unshift(resolveLayerDefRoot(rootDir, userSrcLayer))
       }
+    }
 
-      assertValidLayerDefs(sourceDefs)
+    assertValidLayerDefs(sourceDefs)
 
-      const preparedDefs = sourceDefs.map((def, index) => ({
-        ...def,
-        meta: {
-          ...(def.meta ?? {}),
-          __order: index,
-        },
-      }))
+    const preparedDefs = sourceDefs.map((def, index) => ({
+      ...def,
+      meta: {
+        ...(def.meta ?? {}),
+        __order: index,
+      },
+    }))
 
-      const materializedDefs = preparedDefs
-        .map(def => materializeRemoteLayer(rootDir, config, def))
-        .filter(Boolean) as LayerDef[]
+    const materializedDefs = preparedDefs
+      .map(def => materializeRemoteLayer(rootDir, config, def))
+      .filter(Boolean) as LayerDef[]
 
-      for (const def of materializedDefs) {
-        registry.register(def)
+    for (const def of materializedDefs) {
+      registry.register(def)
+    }
+
+    const orderedDefs = registry.getOrdered()
+    let staticCount = 0
+    let dynamicCount = 0
+
+    for (const def of orderedDefs) {
+      const layer = createLayer({
+        def,
+        config: resourceConfig,
+      })
+      await layer.start()
+      layers.push(layer)
+
+      if (layer.type === 'static') {
+        staticCount++
       }
+      else {
+        dynamicCount++
+      }
+    }
 
-      const orderedDefs = registry.getOrdered()
+    const allAssets = layers.flatMap(layer => layer.getAssets())
+    const hydrateMutations: OVFSMutation[] = allAssets.map(asset => ({ op: 'upsert', asset }))
+    ovfs.mutate(hydrateMutations, { silent: true, reason: 'hydrate' })
 
-      let staticCount = 0
-      let dynamicCount = 0
-
-      for (const def of orderedDefs) {
-        const layer = createLayer({
-          def,
-          config: resourceConfig,
-          ovfs,
-        })
-
-        await layer.start()
-        layers.push(layer)
-
-        if (layer.type === 'static') {
-          staticCount++
+    for (const layer of layers) {
+      if (layer.type !== 'dynamic') {
+        continue
+      }
+      layer.onMutation((layerMutations) => {
+        if (layerMutations.length === 0) {
+          return
         }
-        else {
-          dynamicCount++
-        }
-      }
+        const normalized = normalizeMutations(layerMutations)
+        ovfs.mutate(normalized.mutations, { reason: normalized.reason })
+      })
+    }
 
-      const allAssets = layers.flatMap(layer => layer.getAssets())
-      ovfs.addMany(allAssets)
-      const resolvedAssetCount = ovfs.allTypes().reduce((sum, type) => sum + ovfs.getByType(type).length, 0)
+    stats = {
+      layerCount: orderedDefs.length,
+      rawAssetCount: allAssets.length,
+      resolvedAssetCount: ovfs.stats().totalResources,
+      staticLayers: staticCount,
+      dynamicLayers: dynamicCount,
+    }
 
-      const stats: PipelineStats = {
-        layerCount: orderedDefs.length,
-        rawAssetCount: allAssets.length,
-        resolvedAssetCount,
-        staticLayers: staticCount,
-        dynamicLayers: dynamicCount,
-      }
+    status = 'running'
+  }
 
+  return {
+    start,
+    stop,
+    state: () => {
       return {
+        status,
         registry,
         ovfs,
-        layers,
-        stats,
-      }
-    },
-
-    formatOutput(result: PipelineResult): object {
-      const { registry, ovfs, layers, stats } = result
-
-      const resourcesByType: Record<string, number> = {}
-      for (const type of ovfs.allTypes()) {
-        resourcesByType[type] = ovfs.getByType(type).length
-      }
-
-      return {
-        status: 'init',
-        layers: registry.getOrdered().map(l => ({
-          id: l.id,
-          priority: l.priority,
-          type: layers.find(lay => lay.def.id === l.id)?.type,
-        })),
-        resources: resourcesByType,
-        stats,
-        tree: this.buildResourceTree(result),
-      }
-    },
-
-    buildResourceTree(result: PipelineResult): object {
-      const tree: Record<string, any> = {}
-
-      for (const type of result.ovfs.allTypes()) {
-        const assets = result.ovfs.getByType(type)
-        for (const asset of assets) {
-          const parts = asset.key.split('/').filter(Boolean)
-          this.insertToTree(tree, parts, {
-            id: asset.id,
-            type: asset.type,
-            layer: asset.meta.layerId,
-            priority: asset.meta.priority,
-            route: asset.route?.path,
-          })
-        }
-      }
-
-      return tree
-    },
-
-    insertToTree(tree: any, parts: string[], value: any): void {
-      let current = tree
-      for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i]
-        if (!current[part]) {
-          current[part] = {}
-        }
-        current = current[part]
-      }
-      current[parts[parts.length - 1]] = value
-    },
-
-    formatChangeOutput(layer: Layer, changes: LayerChange[]): object {
-      const added: string[] = []
-      const updated: string[] = []
-      const removed: string[] = []
-
-      for (const change of changes) {
-        switch (change.type) {
-          case 'add':
-            added.push(change.key)
-            break
-          case 'change':
-            updated.push(change.key)
-            break
-          case 'unlink':
-            removed.push(change.key)
-            break
-        }
-      }
-
-      return {
-        status: 'change',
-        layer: layer.def.id,
-        event: changes.length === 1 ? changes[0].type : 'batch',
-        diff: {
-          added: [...new Set(added)],
-          updated: [...new Set(updated)],
-          removed: [...new Set(removed)],
-        },
+        layers: [...layers],
+        stats: { ...stats },
       }
     },
   }

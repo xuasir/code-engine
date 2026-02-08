@@ -1,3 +1,3 @@
-export const useCounter = () => 1
-export const getCounter = () => 2
-export const counter = () => 3
+export const useCounter = (): number => 1
+export const getCounter = (): number => 2
+export const counter = (): number => 3

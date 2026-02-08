@@ -1,5 +1,4 @@
-import type { LayerAsset, LayerDef, ResourceScanConfig, ResourceType } from '@vona-js/schema'
-import type { OVFS } from '../ovfs/ovfs'
+import type { LayerAsset, LayerDef, OVFSMutation, ResourceScanConfig, ResourceType } from '@vona-js/schema'
 import { existsSync } from 'node:fs'
 import chokidar from 'chokidar'
 import micromatch from 'micromatch'
@@ -14,26 +13,22 @@ export interface Layer {
   getAssets: () => LayerAsset[]
   start: () => Promise<void>
   stop: () => void
-  onChange: (callback: (assets: LayerAsset[], changes: LayerChange[]) => void) => void
+  onMutation: (callback: (mutations: LayerMutation[]) => void) => void
 }
 
-export interface LayerChange {
-  type: 'add' | 'change' | 'unlink'
-  key: string
-  routePath?: string
-  asset?: LayerAsset
+export type LayerMutation = OVFSMutation & {
+  reason: 'add' | 'change' | 'unlink'
 }
 
 export interface LayerOptions {
   def: LayerDef
   config: Record<string, ResourceScanConfig>
-  ovfs?: OVFS
 }
 
 interface WatchTarget {
   type: ResourceType
   scanConfig: ResourceScanConfig
-  root: string
+  rootName: string
 }
 
 function isWatchResourceLimitError(error: unknown): boolean {
@@ -44,7 +39,7 @@ function isWatchResourceLimitError(error: unknown): boolean {
   return code === 'EMFILE' || code === 'ENOSPC'
 }
 
-function buildIgnore(def: LayerDef, scanConfig: ResourceScanConfig): string[] {
+function buildLayerIgnore(def: LayerDef): string[] {
   return [
     '**/_*',
     '**/_*/**',
@@ -52,7 +47,6 @@ function buildIgnore(def: LayerDef, scanConfig: ResourceScanConfig): string[] {
     '**/.*/**',
     'node_modules',
     ...(def.ignore ?? []),
-    ...(scanConfig.ignore ?? []),
   ]
 }
 
@@ -70,82 +64,39 @@ function buildWatchTargets(def: LayerDef, config: Record<string, ResourceScanCon
     if (!scanConfig.enabled) {
       continue
     }
-    const root = join(def.source.root, scanConfig.name)
+    const rootName = normalizeSlashes(scanConfig.name).replace(/^\/+|\/+$/g, '')
+    const root = join(def.source.root, rootName)
     if (!existsSync(root)) {
       continue
     }
     targets.push({
       type: type as ResourceType,
       scanConfig,
-      root,
+      rootName,
     })
   }
   return targets
 }
 
-function getRoutePath(asset?: LayerAsset): string | undefined {
-  return asset?.meta.routePath ?? asset?.route?.path
-}
-
-function emitAssetDiff(
-  previousWinners: LayerAsset[],
-  nextWinners: LayerAsset[],
-): LayerChange[] {
-  const previousMap = new Map(previousWinners.map(asset => [asset.key, asset]))
-  const nextMap = new Map(nextWinners.map(asset => [asset.key, asset]))
-  const keys = new Set([...previousMap.keys(), ...nextMap.keys()])
-
-  const changes: LayerChange[] = []
-  for (const key of keys) {
-    const before = previousMap.get(key)
-    const after = nextMap.get(key)
-
-    if (!before && after) {
-      changes.push({
-        type: 'add',
-        key,
-        routePath: getRoutePath(after),
-        asset: after,
-      })
-      continue
-    }
-
-    if (before && !after) {
-      changes.push({
-        type: 'unlink',
-        key,
-        routePath: getRoutePath(before),
-      })
-      continue
-    }
-
-    if (before && after && before.id !== after.id) {
-      changes.push({
-        type: 'change',
-        key,
-        routePath: getRoutePath(after),
-        asset: after,
-      })
-    }
+function matchTargetFile(filePath: string, target: WatchTarget, layerRoot: string): string | null {
+  const relativePath = normalizeSlashes(relative(layerRoot, filePath))
+  if (relativePath.startsWith('../') || relativePath === target.rootName) {
+    return null
   }
-  return changes
-}
 
-function emitContentChange(previousWinners: LayerAsset[], nextWinners: LayerAsset[]): LayerChange[] {
-  const previousMap = new Map(previousWinners.map(asset => [asset.key, asset]))
-  const changes: LayerChange[] = []
-  for (const asset of nextWinners) {
-    const before = previousMap.get(asset.key)
-    if (before && before.id === asset.id) {
-      changes.push({
-        type: 'change',
-        key: asset.key,
-        routePath: getRoutePath(asset),
-        asset,
-      })
-    }
+  const prefix = `${target.rootName}/`
+  if (!relativePath.startsWith(prefix)) {
+    return null
   }
-  return changes
+
+  const scanRelative = relativePath.slice(prefix.length)
+  const matched = micromatch.isMatch(scanRelative, target.scanConfig.pattern, {
+    ignore: target.scanConfig.ignore ?? [],
+  })
+  if (!matched) {
+    return null
+  }
+  return scanRelative
 }
 
 export function createStaticLayer(options: LayerOptions): Layer {
@@ -164,7 +115,7 @@ export function createStaticLayer(options: LayerOptions): Layer {
 
   const getAssets = (): LayerAsset[] => assets
 
-  const onChange = (_callback: (assets: LayerAsset[], changes: LayerChange[]) => void): void => {
+  const onMutation = (_callback: (mutations: LayerMutation[]) => void): void => {
     // 静态层不支持变更
   }
 
@@ -174,24 +125,24 @@ export function createStaticLayer(options: LayerOptions): Layer {
     getAssets,
     start,
     stop,
-    onChange,
+    onMutation,
   }
 }
 
 export function createDynamicLayer(options: LayerOptions): Layer {
-  const { def, config, ovfs } = options
+  const { def, config } = options
   const watchers: Array<ReturnType<typeof chokidar.watch>> = []
   const assetsByFile = new Map<string, LayerAsset[]>()
-  const callbacks: Array<(assets: LayerAsset[], changes: LayerChange[]) => void> = []
+  const callbacks: Array<(mutations: LayerMutation[]) => void> = []
 
-  const emitChange = (assetList: LayerAsset[], changes: LayerChange[]) => {
-    if (changes.length === 0) {
+  const emitMutation = (mutations: LayerMutation[]): void => {
+    if (mutations.length === 0) {
       return
     }
-    callbacks.forEach(cb => cb(assetList, changes))
+    callbacks.forEach(cb => cb(mutations))
   }
 
-  const start = async () => {
+  const start = async (): Promise<void> => {
     if (def.source.type !== 'local') {
       return
     }
@@ -204,104 +155,97 @@ export function createDynamicLayer(options: LayerOptions): Layer {
     }
 
     const targets = buildWatchTargets(def, config)
-    const readyTasks: Array<Promise<void>> = []
-    for (const target of targets) {
-      const createWatcher = (usePolling: boolean) => {
-        return chokidar.watch(target.root, {
-          ignored: buildIgnore(def, target.scanConfig),
-          persistent: true,
-          ignoreInitial: true,
-          usePolling,
-          interval: 120,
-          binaryInterval: 300,
-        })
-      }
-
-      const watcher = createWatcher(false)
-      readyTasks.push(new Promise((resolve) => {
-        watcher.once('ready', () => resolve())
-        watcher.once('error', () => resolve())
-      }))
-
-      const handleFile = async (event: 'add' | 'change' | 'unlink', filePath: string) => {
-        const relativePath = normalizeSlashes(relative(target.root, filePath))
-        if (relativePath.startsWith('../')) {
-          return
-        }
-        if (!micromatch.isMatch(relativePath, target.scanConfig.pattern)) {
-          return
-        }
-
-        const rawPath = normalizeSlashes(join(target.scanConfig.name, relativePath))
-        const previousAssets = assetsByFile.get(rawPath) ?? []
-        const relatedKeys = new Set(previousAssets.map(asset => asset.key))
-
-        if (event !== 'unlink') {
-          const nextAssets = await scanSingleFile(relativePath, def, target.type, target.scanConfig.name)
-          for (const asset of nextAssets) {
-            relatedKeys.add(asset.key)
-          }
-        }
-
-        const previousWinners = [...relatedKeys].map(key => ovfs?.resolve(key)).filter(Boolean) as LayerAsset[]
-
-        for (const oldAsset of previousAssets) {
-          ovfs?.removeById(oldAsset.id)
-        }
-        assetsByFile.delete(rawPath)
-
-        if (event !== 'unlink') {
-          const nextAssets = await scanSingleFile(relativePath, def, target.type, target.scanConfig.name)
-          for (const asset of nextAssets) {
-            ovfs?.upsert(asset)
-          }
-          if (nextAssets.length > 0) {
-            assetsByFile.set(rawPath, nextAssets)
-          }
-        }
-
-        const nextWinners = [...relatedKeys].map(key => ovfs?.resolve(key)).filter(Boolean) as LayerAsset[]
-        const winnerDiff = emitAssetDiff(previousWinners, nextWinners)
-        if (winnerDiff.length > 0) {
-          emitChange(nextWinners, winnerDiff)
-          return
-        }
-
-        if (event === 'change') {
-          const contentDiff = emitContentChange(previousWinners, nextWinners)
-          if (contentDiff.length > 0) {
-            emitChange(nextWinners, contentDiff)
-          }
-        }
-      }
-
-      watcher.on('add', path => void handleFile('add', path))
-      watcher.on('change', path => void handleFile('change', path))
-      watcher.on('unlink', path => void handleFile('unlink', path))
-      watcher.on('error', (error) => {
-        if (isWatchResourceLimitError(error)) {
-          console.warn(`[vona:layer] watcher fallback to polling on layer "${def.id}" (${target.type})`)
-          void watcher.close()
-          const pollingWatcher = createWatcher(true)
-          pollingWatcher.on('add', path => void handleFile('add', path))
-          pollingWatcher.on('change', path => void handleFile('change', path))
-          pollingWatcher.on('unlink', path => void handleFile('unlink', path))
-          pollingWatcher.on('error', (pollingError) => {
-            console.error(`[vona:layer] watcher error on layer "${def.id}" (${target.type}):`, pollingError)
-          })
-          watchers.push(pollingWatcher)
-          return
-        }
-        console.error(`[vona:layer] watcher error on layer "${def.id}" (${target.type}):`, error)
-      })
-
-      watchers.push(watcher)
+    if (targets.length === 0) {
+      return
     }
 
-    await Promise.all(readyTasks)
+    const createWatcher = (usePolling: boolean): ReturnType<typeof chokidar.watch> => {
+      return chokidar.watch(def.source.root, {
+        ignored: buildLayerIgnore(def),
+        persistent: true,
+        ignoreInitial: true,
+        usePolling,
+        interval: 120,
+        binaryInterval: 300,
+      })
+    }
+
+    // 动态更新仅重算当前文件关联的资源键，避免全量重扫。
+    const handleFileForTarget = async (
+      event: 'add' | 'change' | 'unlink',
+      target: WatchTarget,
+      relativePath: string,
+    ): Promise<void> => {
+      const rawPath = normalizeSlashes(join(target.scanConfig.name, relativePath))
+      const previousAssets = assetsByFile.get(rawPath) ?? []
+      const nextAssets = event === 'unlink'
+        ? []
+        : await scanSingleFile(relativePath, def, target.type, target.scanConfig.name)
+      const mutations: LayerMutation[] = []
+
+      for (const oldAsset of previousAssets) {
+        mutations.push({
+          op: 'removeById',
+          id: oldAsset.id,
+          reason: event,
+        })
+      }
+      assetsByFile.delete(rawPath)
+
+      for (const asset of nextAssets) {
+        mutations.push({
+          op: 'upsert',
+          asset,
+          reason: event,
+        })
+      }
+      if (nextAssets.length > 0) {
+        assetsByFile.set(rawPath, nextAssets)
+      }
+      emitMutation(mutations)
+    }
+
+    const handleFile = async (event: 'add' | 'change' | 'unlink', filePath: string): Promise<void> => {
+      for (const target of targets) {
+        const relativePath = matchTargetFile(filePath, target, def.source.root)
+        if (!relativePath) {
+          continue
+        }
+        await handleFileForTarget(event, target, relativePath)
+      }
+    }
+
+    const watcher = createWatcher(false)
+    const readyTask = new Promise<void>((resolve) => {
+      watcher.once('ready', () => resolve())
+      watcher.once('error', () => resolve())
+    })
+
+    watcher.on('add', path => void handleFile('add', path))
+    watcher.on('change', path => void handleFile('change', path))
+    watcher.on('unlink', path => void handleFile('unlink', path))
+    watcher.on('error', (error) => {
+      if (isWatchResourceLimitError(error)) {
+        console.warn(`[vona:layer] watcher fallback to polling on layer "${def.id}"`)
+        void watcher.close()
+        const pollingWatcher = createWatcher(true)
+        pollingWatcher.on('add', path => void handleFile('add', path))
+        pollingWatcher.on('change', path => void handleFile('change', path))
+        pollingWatcher.on('unlink', path => void handleFile('unlink', path))
+        pollingWatcher.on('error', (pollingError) => {
+          console.error(`[vona:layer] watcher error on layer "${def.id}":`, pollingError)
+        })
+        watchers.push(pollingWatcher)
+        return
+      }
+      console.error(`[vona:layer] watcher error on layer "${def.id}":`, error)
+    })
+
+    watchers.push(watcher)
+    await readyTask
   }
 
-  const stop = () => {
+  const stop = (): void => {
     for (const watcher of watchers) {
       void watcher.close()
     }
@@ -309,9 +253,9 @@ export function createDynamicLayer(options: LayerOptions): Layer {
     assetsByFile.clear()
   }
 
-  const getAssets = () => [...assetsByFile.values()].flat()
+  const getAssets = (): LayerAsset[] => [...assetsByFile.values()].flat()
 
-  const onChange = (callback: (assets: LayerAsset[], changes: LayerChange[]) => void) => {
+  const onMutation = (callback: (mutations: LayerMutation[]) => void): void => {
     callbacks.push(callback)
   }
 
@@ -321,7 +265,7 @@ export function createDynamicLayer(options: LayerOptions): Layer {
     getAssets,
     start,
     stop,
-    onChange,
+    onMutation,
   }
 }
 

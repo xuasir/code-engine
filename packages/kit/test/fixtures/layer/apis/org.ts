@@ -1,2 +1,2 @@
-export const getOrgService = () => ({})
-export const getOrg = () => ({})
+export const getOrgService = (): Record<string, never> => ({})
+export const getOrg = (): Record<string, never> => ({})

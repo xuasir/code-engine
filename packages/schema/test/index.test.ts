@@ -1,4 +1,4 @@
-import type { LayerAsset, LayerConfig, LayerDef, Vona, VonaOVFS } from '../src/types'
+import type { LayerAsset, LayerConfig, LayerDef, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 describe('schema types', () => {
@@ -41,20 +41,38 @@ describe('schema types', () => {
       config: {
         export: 'default' | 'named'
       }
-      loader: {
-        importName?: string
-      }
     }>()
   })
 
   it('vona should mount ovfs instance directly', () => {
-    expectTypeOf<VonaOVFS>().toMatchTypeOf<{
-      resolve: (key: string) => LayerAsset | undefined
-      list: (type?: any) => string[]
+    expectTypeOf<OVFS>().toMatchTypeOf<{
+      get: (path: string) => LayerAsset | undefined
+      getStack: (path: string) => LayerAsset[]
+      has: (path: string) => boolean
+      entries: (type?: any) => any[]
+      mutate: (mutations: any[], options?: any) => OVFSResourceChange[]
+      subscribe: (callback: (changes: OVFSResourceChange[]) => void) => () => void
+      clear: () => void
+      stats: () => { totalResources: number }
       toManifest: () => any
     }>()
     expectTypeOf<Vona>().toMatchTypeOf<{
-      ovfs?: VonaOVFS
+      ovfs: OVFS
     }>()
+  })
+
+  it('ovfs change event should carry path and stack data', () => {
+    expectTypeOf<OVFSResourceChange>().toMatchTypeOf<{
+      path: string
+      beforeStack: LayerAsset[]
+      afterStack: LayerAsset[]
+    }>()
+  })
+
+  it('ovfs:change hook should consume ovfs resource changes', () => {
+    expectTypeOf<VonaHooks['ovfs:change']>().toMatchTypeOf<(
+      changes: OVFSResourceChange[],
+      vona: Vona,
+    ) => Promise<void> | void>()
   })
 })

@@ -1,3 +1,3 @@
-export function bPluginIndex() {
-  console.log('plugin b/index from layer1')
+export function bPluginIndex(): string {
+  return 'plugin b/index from layer1'
 }
