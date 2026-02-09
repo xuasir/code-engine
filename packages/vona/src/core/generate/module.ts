@@ -1,5 +1,6 @@
 import type { OVFS, Vona } from '@vona-js/schema'
-import { debounce, defineModule, generateDTS, useLogger } from '@vona-js/kit'
+import { defineModule, generateDTS, useLogger } from '@vona-js/kit'
+import { debounce } from '@vona-js/utils'
 import { ensureDir, writeFile } from 'fs-extra'
 import { join } from 'pathe'
 

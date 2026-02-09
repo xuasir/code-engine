@@ -16,8 +16,8 @@ export async function resolveModules(vona: Vona): Promise<{
   const paths = new Set<string>()
   const resolvedModulePaths = new Set<string>()
 
-  // 定义模块名称的正则表达式，用于匹配以 '@vona-js/module-' 开头的模块
-  const moduleReg = /^@vona-js\/vona-js-module-/
+  // 定义模块名称的正则表达式，用于匹配以 '@vona-js/module-' 或者 'vona-js-module-' 开头的模块
+  const moduleReg = /^@vona-js\/module-|^vona-js-module-/
   // 添加内部模块
   const internalModules = vona.options.__internalModules
   // 获取配置中的模块列表

@@ -1,4 +1,5 @@
 export { EXT_REG } from './constants'
+export { debounce } from './functions'
 export { BASE_RESOURCE_IGNORE } from './ignore'
 export { normalizeSlashes } from './path'
 export { camelCase, capitalize, toKebabToken, toPascalByPath, toPascalToken } from './strings'

@@ -314,6 +314,9 @@ importers:
       '@vona-js/schema':
         specifier: workspace:*
         version: link:../schema
+      '@vona-js/utils':
+        specifier: workspace:*
+        version: link:../utils
       chokidar:
         specifier: catalog:prod
         version: 5.0.0

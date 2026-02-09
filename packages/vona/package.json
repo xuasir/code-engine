@@ -40,6 +40,7 @@
   "dependencies": {
     "@vona-js/kit": "workspace:*",
     "@vona-js/schema": "workspace:*",
+    "@vona-js/utils": "workspace:*",
     "chokidar": "catalog:prod",
     "citty": "catalog:prod",
     "es-module-lexer": "catalog:prod",
