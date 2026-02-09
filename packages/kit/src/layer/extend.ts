@@ -1,5 +1,5 @@
 import type { LayerDef } from '@vona-js/schema'
-import { useVona } from '../context'
+import { registerLayer } from './register'
 
 type LayerInput = LayerDef | (() => LayerDef)
 
@@ -7,12 +7,8 @@ function resolveLayerDef(input: LayerInput): LayerDef {
   return typeof input === 'function' ? input() : input
 }
 
-// 在模块安装阶段注册 layer 扩展，pipeline.start 时统一消费。
 export function addLayer(input: LayerInput): void {
-  const vona = useVona()
-  vona.hook('layer:extend', (ctx) => {
-    ctx.addLayer(resolveLayerDef(input))
-  })
+  registerLayer(resolveLayerDef(input))
 }
 
 export function addLayers(inputs: LayerInput[]): void {

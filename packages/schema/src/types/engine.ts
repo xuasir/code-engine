@@ -3,6 +3,7 @@ import type { AsyncLocalStorage } from 'node:async_hooks'
 import type { VonaOptions } from './config'
 import type { VonaEnv } from './env'
 import type { VonaHooks } from './hooks'
+import type { LayerRegistry } from './layer'
 import type { VonaModule } from './module'
 import type { OVFS } from './ovfs'
 
@@ -30,6 +31,8 @@ export interface Vona {
 
   /** OVFS 实例 */
   ovfs: OVFS
+  /** Layer 注册表 */
+  layerRegistry: LayerRegistry
 
   /** 环境 */
   env: VonaEnv

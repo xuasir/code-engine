@@ -1,18 +1,69 @@
-import type { LayerConfig, LayerDef, OVFSMutation, ResourceScanConfig } from '@vona-js/schema'
+import type { LayerConfig, LayerDef, OVFSMutation, ResourceScanConfig, Vona } from '@vona-js/schema'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createPipeline } from '../src/layer/pipeline'
+import { createLayerRuntime } from '../src/layer/runtime'
 import { createLayerRegistry } from '../src/layer/registry'
+import { closeLayerRegistration, createUserSrcLayer, registerLayer } from '../src/layer/register'
 import { createAsset, scanLayer } from '../src/layer/scanner'
 import { createOVFS } from '../src/ovfs/ovfs'
 
-async function withPipeline<T>(rootDir: string, handler: (pipeline: ReturnType<typeof createPipeline>) => Promise<T>): Promise<T> {
-  const pipeline = createPipeline({ rootDir })
+function createRegisterVona(rootDir: string, layerConfig: LayerConfig): Vona {
+  return {
+    __name: 'test-vona',
+    __version: '0.0.1',
+    __asyncLocalStorageModule: new AsyncLocalStorage<any>(),
+    options: {
+      __rootDir: rootDir,
+      layer: layerConfig,
+    } as any,
+    layerRegistry: createLayerRegistry(),
+  } as Vona
+}
+
+function asUserLayer(def: LayerDef, order: number): LayerDef {
+  return {
+    ...def,
+    meta: {
+      ...(def.meta ?? {}),
+      __order: order,
+      __origin: 'user',
+      __scanPolicy: 'user',
+    },
+  }
+}
+
+function registerBaseLayers(vona: Vona, layerConfig: LayerConfig): void {
+  let baseOrder = -1_000_000_000
+  if (layerConfig.enabled) {
+    const userLayer = createUserSrcLayer(vona.options.__rootDir)
+    if (userLayer) {
+      registerLayer(asUserLayer(userLayer, baseOrder++), vona)
+    }
+  }
+
+  for (const def of layerConfig.defs ?? []) {
+    registerLayer(asUserLayer(def, baseOrder++), vona)
+  }
+}
+
+async function withRuntime<T>(
+  rootDir: string,
+  layerConfig: LayerConfig,
+  handler: (runtime: ReturnType<typeof createLayerRuntime>, vona: Vona) => Promise<T>,
+): Promise<T> {
+  const runtime = createLayerRuntime()
+  const vona = createRegisterVona(rootDir, layerConfig)
+  registerBaseLayers(vona, layerConfig)
+  closeLayerRegistration(vona)
+  vona.options.__layers = vona.layerRegistry.getOrdered()
+
   try {
-    return await handler(pipeline)
+    await runtime.start(layerConfig, { registry: vona.layerRegistry })
+    return await handler(runtime, vona)
   }
   finally {
-    await pipeline.stop()
+    await runtime.stop()
   }
 }
 
@@ -43,21 +94,13 @@ describe('target.md - 配置测试', () => {
       ],
     }
 
-    const disabledIds = await withPipeline(semanticFixturesDir, async (pipeline) => {
-      await pipeline.start({
-        enabled: false,
-        ...baseConfig,
-      })
-      return pipeline.state().registry.getOrdered().map(layer => layer.id)
-    })
+    const disabledVona = createRegisterVona(semanticFixturesDir, { enabled: false, ...baseConfig } as LayerConfig)
+    registerBaseLayers(disabledVona, { enabled: false, ...baseConfig } as LayerConfig)
+    const disabledIds = disabledVona.layerRegistry.getOrdered().map(layer => layer.id)
 
-    const enabledIds = await withPipeline(semanticFixturesDir, async (pipeline) => {
-      await pipeline.start({
-        enabled: true,
-        ...baseConfig,
-      })
-      return pipeline.state().registry.getOrdered().map(layer => layer.id)
-    })
+    const enabledVona = createRegisterVona(semanticFixturesDir, { enabled: true, ...baseConfig } as LayerConfig)
+    registerBaseLayers(enabledVona, { enabled: true, ...baseConfig } as LayerConfig)
+    const enabledIds = enabledVona.layerRegistry.getOrdered().map(layer => layer.id)
 
     expect(disabledIds).toEqual(['core'])
     expect(enabledIds).toEqual(['user', 'core'])
@@ -204,72 +247,39 @@ describe('target.md - 堆结构管理层测试', () => {
     expect(registry.getOrdered().map(layer => layer.id)).toEqual(['a', 'b', 'c'])
   })
 
-  it('pipeline 层启动顺序应与 registry 保持一致', async () => {
+  it('runtime 层启动顺序应与 registry 保持一致', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: true,
-        defs: [
-          { id: 'a', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-          { id: 'b', source: { type: 'local', root: './layer2', dynamic: false }, priority: 100 },
-          { id: 'c', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-        ],
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+    const layerConfig: LayerConfig = {
+      enabled: true,
+      defs: [
+        { id: 'a', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+        { id: 'b', source: { type: 'local', root: './layer2', dynamic: false }, priority: 100 },
+        { id: 'c', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+      ],
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig)
-      const state = pipeline.state()
-      const orderedByRegistry = state.registry.getOrdered().map(layer => layer.id)
+    await withRuntime(fixturesDir, layerConfig, async (runtime, vona) => {
+      const state = runtime.state()
+      const orderedByRegistry = vona.layerRegistry.getOrdered().map(layer => layer.id)
       const startedOrder = state.layers.map(layer => layer.def.id)
       expect(startedOrder).toEqual(orderedByRegistry)
       expect(startedOrder).toEqual(['a', 'b', 'c'])
     })
   })
 
-  it('pipeline 应复用传入的 ovfs 实例', async () => {
+  it('runtime 应复用传入的 ovfs 实例', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
     const injectedOVFS = createOVFS()
-    const pipeline = createPipeline({
-      rootDir: fixturesDir,
-      ovfs: injectedOVFS,
-    })
+    const runtime = createLayerRuntime({ ovfs: injectedOVFS })
 
-    try {
-      const layerConfig: LayerConfig = {
-        enabled: true,
-        defs: [
-          { id: 'layer1', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-        ],
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
-        },
-      }
-
-      await pipeline.start(layerConfig)
-      const state = pipeline.state()
-      expect(state.ovfs).toBe(injectedOVFS)
-      expect(injectedOVFS.get('plugins/a')).toBeTruthy()
-    }
-    finally {
-      await pipeline.stop()
-    }
-  })
-
-  it('pipeline 应具备状态机语义，重复 start 抛错，stop 幂等', async () => {
-    const fixturesDir = join(__dirname, 'fixtures', 'target')
-    const pipeline = createPipeline({ rootDir: fixturesDir })
     const layerConfig: LayerConfig = {
       enabled: true,
       defs: [
@@ -285,160 +295,302 @@ describe('target.md - 堆结构管理层测试', () => {
       },
     }
 
-    expect(pipeline.state().status).toBe('idle')
-    await pipeline.start(layerConfig)
-    expect(pipeline.state().status).toBe('running')
-    await expect(pipeline.start(layerConfig)).rejects.toThrow('Pipeline already running')
-    await pipeline.stop()
-    expect(pipeline.state().status).toBe('stopped')
-    await pipeline.stop()
-    expect(pipeline.state().status).toBe('stopped')
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerBaseLayers(vona, layerConfig)
+    closeLayerRegistration(vona)
+
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      const state = runtime.state()
+      expect(state.ovfs).toBe(injectedOVFS)
+      expect(injectedOVFS.get('plugins/a')).toBeTruthy()
+    }
+    finally {
+      await runtime.stop()
+    }
   })
 
-  it('pipeline.addLayer 在 start 生命周期外调用应抛错', () => {
+  it('runtime 应具备状态机语义，重复 start 抛错，stop 幂等', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    const pipeline = createPipeline({ rootDir: fixturesDir })
+    const runtime = createLayerRuntime()
+    const layerConfig: LayerConfig = {
+      enabled: true,
+      defs: [
+        { id: 'layer1', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+      ],
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
+        },
+      },
+    }
+
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerBaseLayers(vona, layerConfig)
+    closeLayerRegistration(vona)
+
+    expect(runtime.state().status).toBe('idle')
+    await runtime.start(layerConfig, { registry: vona.layerRegistry })
+    expect(runtime.state().status).toBe('running')
+    await expect(runtime.start(layerConfig, { registry: vona.layerRegistry })).rejects.toThrow('LayerRuntime already running')
+    await runtime.stop()
+    expect(runtime.state().status).toBe('stopped')
+    await runtime.stop()
+    expect(runtime.state().status).toBe('stopped')
+  })
+
+  it('注册窗口关闭后 addLayer 应抛错', () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+    }
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    closeLayerRegistration(vona)
 
     expect(() => {
-      pipeline.addLayer({
-        id: 'out-of-start',
+      registerLayer({
+        id: 'out-of-window',
         source: { type: 'local', root: './layer1', dynamic: false },
         priority: 100,
-      })
-    }).toThrow('addLayer can only be used during pipeline.start')
+      }, vona)
+    }).toThrow('addLayer can only be used before modules:done')
   })
 
-  it('pipeline.start 应允许 onExtend 注册额外 layer', async () => {
+  it('注册阶段应允许追加 layer，并由 runtime 消费', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: false,
-        defs: [],
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig, {
-        onExtend: (ctx) => {
-          ctx.addLayer({
-            id: 'ext-layer2',
-            source: { type: 'local', root: './layer2', dynamic: false },
-            priority: 100,
-          })
-        },
-      })
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerBaseLayers(vona, layerConfig)
+    const added = registerLayer({
+      id: 'ext-layer2',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+    }, vona)
+    closeLayerRegistration(vona)
 
-      expect(pipeline.state().registry.has('ext-layer2')).toBe(true)
-      expect(pipeline.state().ovfs.get('plugins/c')).toBeTruthy()
-    })
+    const runtime = createLayerRuntime()
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      expect(added).toBeTruthy()
+      expect(vona.layerRegistry.has('ext-layer2')).toBe(true)
+      expect(runtime.state().ovfs.get('plugins/c')).toBeTruthy()
+    }
+    finally {
+      await runtime.stop()
+    }
   })
 
-  it('同优先级下配置层应优先于 onExtend 注入层', async () => {
+  it('同优先级下配置层应优先于模块注入层', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: false,
-        defs: [
-          { id: 'base', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-        ],
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [
+        { id: 'base', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+      ],
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig, {
-        onExtend: (ctx) => {
-          ctx.addLayer({
-            id: 'ext',
-            source: { type: 'local', root: './layer2', dynamic: false },
-            priority: 100,
-          })
-        },
-      })
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerBaseLayers(vona, layerConfig)
+    registerLayer({
+      id: 'ext',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+    }, vona)
+    closeLayerRegistration(vona)
 
-      expect(pipeline.state().ovfs.get('plugins/b')?.meta.layerId).toBe('base')
-    })
+    const runtime = createLayerRuntime()
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      expect(runtime.state().ovfs.get('plugins/b')?.meta.layerId).toBe('base')
+    }
+    finally {
+      await runtime.stop()
+    }
   })
 
-  it('onExtend 注入重复 id 时，start 应失败', async () => {
+  it('同优先级下显式较小 __order 应优先，即使注册更晚', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: false,
-        defs: [
-          { id: 'dup', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
-        ],
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await expect(pipeline.start(layerConfig, {
-        onExtend: (ctx) => {
-          ctx.addLayer({
-            id: 'dup',
-            source: { type: 'local', root: './layer2', dynamic: false },
-            priority: 100,
-          })
-        },
-      })).rejects.toThrow('Duplicate layer id found: dup')
-    })
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerLayer({
+      id: 'module-ext',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+    }, vona)
+    registerLayer({
+      id: 'base-late',
+      source: { type: 'local', root: './layer1', dynamic: false },
+      priority: 100,
+      meta: {
+        __order: -1_000_000_000,
+      },
+    }, vona)
+    closeLayerRegistration(vona)
+
+    const runtime = createLayerRuntime()
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      expect(runtime.state().ovfs.get('plugins/b')?.meta.layerId).toBe('base-late')
+    }
+    finally {
+      await runtime.stop()
+    }
   })
 
-  it('onExtend 注入 remote 层，缓存缺失时应返回 null 并告警', async () => {
+  it('用户 resourceConfig 仅作用于用户层，默认模块层走标准扫描策略', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+      config: {
+        plugins: {
+          enabled: false,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
+        },
+      },
+    }
+
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerLayer({
+      id: 'module-default',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+    }, vona)
+    closeLayerRegistration(vona)
+
+    const runtime = createLayerRuntime()
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      expect(runtime.state().ovfs.get('plugins/c')).toBeTruthy()
+    }
+    finally {
+      await runtime.stop()
+    }
+  })
+
+  it('模块显式 __scanPolicy=user 时应遵循用户 resourceConfig', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+      config: {
+        plugins: {
+          enabled: false,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
+        },
+      },
+    }
+
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerLayer({
+      id: 'module-opt-in-user-policy',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+      meta: {
+        __scanPolicy: 'user',
+      },
+    }, vona)
+    closeLayerRegistration(vona)
+
+    const runtime = createLayerRuntime()
+    try {
+      await runtime.start(layerConfig, { registry: vona.layerRegistry })
+      expect(runtime.state().ovfs.get('plugins/c')).toBeUndefined()
+    }
+    finally {
+      await runtime.stop()
+    }
+  })
+
+  it('注册重复 id 时应失败', () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [
+        { id: 'dup', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+      ],
+    }
+
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    registerBaseLayers(vona, layerConfig)
+
+    expect(() => registerLayer({
+      id: 'dup',
+      source: { type: 'local', root: './layer2', dynamic: false },
+      priority: 100,
+    }, vona)).toThrow('Duplicate layer id found: dup')
+  })
+
+  it('注册 remote 层，缓存缺失时应返回 null 并告警', () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let added: LayerDef | null | undefined
-
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: false,
-        defs: [],
-        remote: {
-          cacheDir: '.vona/layers',
-          preferCache: true,
+    const layerConfig: LayerConfig = {
+      enabled: false,
+      defs: [],
+      remote: {
+        cacheDir: '.vona/layers',
+        preferCache: true,
+      },
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
-        },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig, {
-        onExtend: (ctx) => {
-          added = ctx.addLayer({
-            id: 'remote-missing',
-            source: { type: 'remote', root: '@scope/missing' },
-            priority: 100,
-          })
-        },
-      })
+    const vona = createRegisterVona(fixturesDir, layerConfig)
+    const added = registerLayer({
+      id: 'remote-missing',
+      source: { type: 'remote', root: '@scope/missing' },
+      priority: 100,
+    }, vona)
 
-      expect(added).toBeNull()
-      expect(pipeline.state().registry.has('remote-missing')).toBe(false)
-      expect(warnSpy).toHaveBeenCalledTimes(1)
-    })
-
+    expect(added).toBeNull()
+    expect(vona.layerRegistry.has('remote-missing')).toBe(false)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
     warnSpy.mockRestore()
   })
 })
@@ -570,32 +722,31 @@ describe('target.md - 动态层最小变更测试', () => {
 describe('target.md - remote 占位测试', () => {
   it('cache 命中时应扫描 remote layer', async () => {
     const fixturesDir = join(__dirname, 'fixtures', 'remote')
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: true,
-        defs: [
-          {
-            id: 'remote-core',
-            source: { type: 'remote', root: '@scope/core' },
-            priority: 50,
-          },
-        ],
-        remote: {
-          cacheDir: '.vona/layers',
-          preferCache: true,
+    const layerConfig: LayerConfig = {
+      enabled: true,
+      defs: [
+        {
+          id: 'remote-core',
+          source: { type: 'remote', root: '@scope/core' },
+          priority: 50,
         },
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+      ],
+      remote: {
+        cacheDir: '.vona/layers',
+        preferCache: true,
+      },
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig)
-      expect(pipeline.state().ovfs.get('plugins/remote')).toBeTruthy()
+    await withRuntime(fixturesDir, layerConfig, async (runtime) => {
+      expect(runtime.state().ovfs.get('plugins/remote')).toBeTruthy()
     })
   })
 
@@ -603,32 +754,31 @@ describe('target.md - remote 占位测试', () => {
     const fixturesDir = join(__dirname, 'fixtures', 'target')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await withPipeline(fixturesDir, async (pipeline) => {
-      const layerConfig: LayerConfig = {
-        enabled: true,
-        defs: [
-          {
-            id: 'remote-missing',
-            source: { type: 'remote', root: '@scope/missing' },
-            priority: 50,
-          },
-        ],
-        remote: {
-          cacheDir: '.vona/layers',
-          preferCache: true,
+    const layerConfig: LayerConfig = {
+      enabled: true,
+      defs: [
+        {
+          id: 'remote-missing',
+          source: { type: 'remote', root: '@scope/missing' },
+          priority: 50,
         },
-        config: {
-          plugins: {
-            enabled: true,
-            name: 'plugins',
-            pattern: ['**/*.{ts,js}'],
-            ignore: [],
-          },
+      ],
+      remote: {
+        cacheDir: '.vona/layers',
+        preferCache: true,
+      },
+      config: {
+        plugins: {
+          enabled: true,
+          name: 'plugins',
+          pattern: ['**/*.{ts,js}'],
+          ignore: [],
         },
-      }
+      },
+    }
 
-      await pipeline.start(layerConfig)
-      expect(pipeline.state().ovfs.entries('plugins')).toHaveLength(0)
+    await withRuntime(fixturesDir, layerConfig, async (runtime) => {
+      expect(runtime.state().ovfs.entries('plugins')).toHaveLength(0)
       expect(warnSpy).toHaveBeenCalledTimes(1)
     })
 

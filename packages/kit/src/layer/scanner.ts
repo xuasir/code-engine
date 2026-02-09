@@ -13,97 +13,24 @@ import {
 import fg from 'fast-glob'
 import { join } from 'pathe'
 
-export async function scanLayer(
-  layer: LayerDef,
-  config: Record<string, ResourceScanConfig>,
-): Promise<LayerAsset[]> {
-  if (layer.source.type !== 'local') {
-    return []
-  }
+const FLAT_RESOURCE_TYPES = new Set<ResourceType>(['composables', 'apis', 'plugins', 'store', 'utils'])
 
-  const results: LayerAsset[] = []
-
-  for (const [type, scanConfig] of Object.entries(config)) {
-    if (!scanConfig.enabled) {
-      continue
-    }
-
-    const scanRoot = join(layer.source.root, scanConfig.name)
-    if (!existsSync(scanRoot)) {
-      continue
-    }
-
-    const entries = await fg(scanConfig.pattern, {
-      cwd: scanRoot,
-      ignore: buildIgnore(layer, scanConfig),
-      onlyFiles: true,
-    })
-
-    for (const entry of entries) {
-      const relative = normalizeSlashes(join(scanConfig.name, entry))
-      const assets = await scanEntry(relative, layer, type as ResourceType, scanConfig.name)
-      results.push(...assets)
-    }
-  }
-
-  return results
+interface ScanTaskContext {
+  type: ResourceType
+  rootPrefix: string
+  typePrefix: string
+  isFlatType: boolean
 }
 
-export function createAsset(entry: string, layer: LayerDef, type: ResourceType, rootName?: string): LayerAsset {
-  const relative = normalizeSlashes(entry)
-  const base = normalizeSegment(relative, type, rootName) || 'index'
-  const keyName = resolveKeyName(type, base)
-  return buildAsset({
-    layer,
-    type,
-    relative,
-    scanKey: relative,
-    keyName,
-  })
+interface ScanTask extends ScanTaskContext {
+  scanRoot: string
+  pattern: string[]
+  ignore: string[]
 }
 
-export async function scanSingleFile(
-  path: string,
-  layer: LayerDef,
-  type: ResourceType,
-  rootName?: string,
-): Promise<LayerAsset[]> {
-  const relative = rootName ? normalizeSlashes(join(rootName, path)) : normalizeSlashes(path)
-  return scanEntry(relative, layer, type, rootName)
-}
-
-async function scanEntry(
-  relative: string,
-  layer: LayerDef,
-  type: ResourceType,
-  rootName?: string,
-): Promise<LayerAsset[]> {
-  const base = normalizeSegment(relative, type, rootName)
-
-  if (!base) {
-    if (type === 'pages') {
-      return [buildAsset({
-        layer,
-        type,
-        relative,
-        scanKey: relative,
-        keyName: 'index',
-      })]
-    }
-    return []
-  }
-
-  if (!isAllowedByType(type, base)) {
-    return []
-  }
-
-  return [buildAsset({
-    layer,
-    type,
-    relative,
-    scanKey: relative,
-    keyName: resolveKeyName(type, base),
-  })]
+interface ScanCache {
+  nameCache: Map<string, LayerAsset['name']>
+  routeCache: Map<string, { path: string, score: number }>
 }
 
 interface BuildAssetOptions {
@@ -114,12 +41,110 @@ interface BuildAssetOptions {
   keyName: string
 }
 
-function buildAsset(options: BuildAssetOptions): LayerAsset {
+export async function scanLayer(
+  layer: LayerDef,
+  config: Record<string, ResourceScanConfig>,
+): Promise<LayerAsset[]> {
+  if (layer.source.type !== 'local') {
+    return []
+  }
+
+  const tasks = createScanTasks(layer, config)
+  if (tasks.length === 0) {
+    return []
+  }
+
+  const entriesByTask = await Promise.all(tasks.map(task => scanTask(task)))
+  const cache: ScanCache = {
+    nameCache: new Map(),
+    routeCache: new Map(),
+  }
+  const results: LayerAsset[] = []
+
+  // 并发扫描后按任务创建顺序回收，保证输出稳定
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i]
+    const entries = entriesByTask[i]
+    for (const entry of entries) {
+      const relative = toRelativePath(entry, task)
+      const asset = scanEntry(relative, layer, task, cache)
+      if (asset) {
+        results.push(asset)
+      }
+    }
+  }
+
+  return results
+}
+
+export function createAsset(entry: string, layer: LayerDef, type: ResourceType, rootName?: string): LayerAsset {
+  const relative = normalizeSlashes(entry)
+  const context = createTaskContext(type, rootName)
+  const base = normalizeSegment(relative, context) || 'index'
+  const keyName = resolveKeyName(type, base)
+  return buildAsset({
+    layer,
+    type,
+    relative,
+    scanKey: relative,
+    keyName,
+  })
+}
+
+export function scanSingleFile(
+  path: string,
+  layer: LayerDef,
+  type: ResourceType,
+  rootName?: string,
+): LayerAsset[] {
+  const context = createTaskContext(type, rootName)
+  const relative = rootName ? normalizeSlashes(join(rootName, path)) : normalizeSlashes(path)
+  const asset = scanEntry(relative, layer, context)
+  return asset ? [asset] : []
+}
+
+function scanEntry(
+  relative: string,
+  layer: LayerDef,
+  context: ScanTaskContext,
+  cache?: ScanCache,
+): LayerAsset | undefined {
+  const base = normalizeSegment(relative, context)
+
+  if (!base) {
+    if (context.type === 'pages') {
+      return buildAsset({
+        layer,
+        type: context.type,
+        relative,
+        scanKey: relative,
+        keyName: 'index',
+      }, cache)
+    }
+    return undefined
+  }
+
+  if (!isAllowedByType(base, context)) {
+    return undefined
+  }
+
+  return buildAsset({
+    layer,
+    type: context.type,
+    relative,
+    scanKey: relative,
+    keyName: resolveKeyName(context.type, base),
+  }, cache)
+}
+
+function buildAsset(options: BuildAssetOptions, cache?: ScanCache): LayerAsset {
   const { layer, type, relative, scanKey, keyName } = options
   const root = layer.source.type === 'local' ? layer.source.root : ''
   const key = `${type}/${keyName}`
-  const route = type === 'pages' ? createPageRoute(keyName) : undefined
-  const nameInfo = parseName(keyName, type)
+  const route = type === 'pages'
+    ? resolvePageRoute(keyName, cache)
+    : undefined
+  const nameInfo = resolveNameInfo(keyName, type, cache)
 
   return {
     id: `${layer.id}:${type}:${scanKey}`,
@@ -139,7 +164,7 @@ function buildAsset(options: BuildAssetOptions): LayerAsset {
       relative,
       scan: relative,
     },
-    name: nameInfo,
+    name: { ...nameInfo },
     config: {
       export: 'default',
     },
@@ -147,7 +172,7 @@ function buildAsset(options: BuildAssetOptions): LayerAsset {
       relative,
       dynamicImport: () => `import('${relative}')`,
     },
-    route,
+    route: route ? { ...route } : undefined,
   }
 }
 
@@ -167,17 +192,16 @@ function resolveKeyName(type: ResourceType, normalized: string): string {
   }
 }
 
-function isAllowedByType(type: ResourceType, normalized: string): boolean {
-  const segments = normalized.split('/').filter(Boolean)
-  if (segments.length === 0) {
-    return type === 'pages'
+function isAllowedByType(normalized: string, context: ScanTaskContext): boolean {
+  if (!normalized) {
+    return context.type === 'pages'
   }
 
-  if (type === 'composables' || type === 'apis' || type === 'plugins' || type === 'store' || type === 'utils') {
-    return segments.length <= 1
+  if (!context.isFlatType) {
+    return true
   }
 
-  return true
+  return !normalized.includes('/')
 }
 
 interface ParsedPageSegment {
@@ -284,6 +308,44 @@ function parseName(keyName: string, type: ResourceType): LayerAsset['name'] {
   }
 }
 
+function resolveNameInfo(
+  keyName: string,
+  type: ResourceType,
+  cache?: ScanCache,
+): LayerAsset['name'] {
+  if (!cache) {
+    return parseName(keyName, type)
+  }
+
+  const cacheKey = `${type}:${keyName}`
+  const cached = cache.nameCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  const value = parseName(keyName, type)
+  cache.nameCache.set(cacheKey, value)
+  return value
+}
+
+function resolvePageRoute(
+  keyName: string,
+  cache?: ScanCache,
+): { path: string, score: number } {
+  if (!cache) {
+    return createPageRoute(keyName)
+  }
+
+  const cached = cache.routeCache.get(keyName)
+  if (cached) {
+    return cached
+  }
+
+  const value = createPageRoute(keyName)
+  cache.routeCache.set(keyName, value)
+  return value
+}
+
 function buildIgnore(layer: LayerDef, scanConfig: ResourceScanConfig): string[] {
   return [
     ...BASE_RESOURCE_IGNORE,
@@ -292,17 +354,73 @@ function buildIgnore(layer: LayerDef, scanConfig: ResourceScanConfig): string[] 
   ]
 }
 
-function normalizeSegment(relative: string, type: ResourceType, rootName?: string): string {
+function normalizeRootName(rootName: string | undefined): string {
+  if (!rootName) {
+    return ''
+  }
+  return normalizeSlashes(rootName).replace(/^\/+|\/+$/g, '')
+}
+
+function createTaskContext(type: ResourceType, rootName?: string): ScanTaskContext {
+  const normalizedRootName = normalizeRootName(rootName)
+  return {
+    type,
+    rootPrefix: normalizedRootName ? `${normalizedRootName}/` : '',
+    typePrefix: `${type}/`,
+    isFlatType: FLAT_RESOURCE_TYPES.has(type),
+  }
+}
+
+function createScanTasks(layer: LayerDef, config: Record<string, ResourceScanConfig>): ScanTask[] {
+  const tasks: ScanTask[] = []
+  for (const [rawType, scanConfig] of Object.entries(config)) {
+    if (!scanConfig.enabled) {
+      continue
+    }
+
+    const type = rawType as ResourceType
+    const scanRoot = join(layer.source.root, scanConfig.name)
+    if (!existsSync(scanRoot)) {
+      continue
+    }
+
+    const context = createTaskContext(type, scanConfig.name)
+    tasks.push({
+      ...context,
+      scanRoot,
+      pattern: scanConfig.pattern,
+      ignore: buildIgnore(layer, scanConfig),
+    })
+  }
+  return tasks
+}
+
+async function scanTask(task: ScanTask): Promise<string[]> {
+  return fg(task.pattern, {
+    cwd: task.scanRoot,
+    ignore: task.ignore,
+    onlyFiles: true,
+  })
+}
+
+function toRelativePath(entry: string, task: ScanTask): string {
+  const normalizedEntry = normalizeSlashes(entry)
+  if (task.rootPrefix) {
+    return `${task.rootPrefix}${normalizedEntry}`
+  }
+  return normalizedEntry
+}
+
+function normalizeSegment(relative: string, context: ScanTaskContext): string {
   let value = normalizeSlashes(relative).replace(/^\//, '')
 
-  if (rootName) {
-    const prefix = `${normalizeSlashes(rootName).replace(/^\//, '').replace(/\/$/, '')}/`
-    if (value.startsWith(prefix)) {
-      value = value.slice(prefix.length)
+  if (context.rootPrefix) {
+    if (value.startsWith(context.rootPrefix)) {
+      value = value.slice(context.rootPrefix.length)
     }
   }
-  else if (value.startsWith(`${type}/`)) {
-    value = value.slice(type.length + 1)
+  else if (value.startsWith(context.typePrefix)) {
+    value = value.slice(context.typePrefix.length)
   }
 
   value = value.replace(EXT_REG, '')

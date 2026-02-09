@@ -24,5 +24,5 @@ import { defineModule, addLayer, useVona } from '@vona-js/kit'
 ```
 
 ```ts
-import { createPipeline, createOVFS } from '@vona-js/kit/internal'
+import { createLayerRuntime, createOVFS } from '@vona-js/kit/internal'
 ```

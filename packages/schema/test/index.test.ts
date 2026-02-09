@@ -1,4 +1,4 @@
-import type { LayerAsset, LayerConfig, LayerDef, LayerExtendContext, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
+import type { LayerAsset, LayerConfig, LayerDef, LayerRegistry, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 describe('schema types', () => {
@@ -44,6 +44,32 @@ describe('schema types', () => {
     }>()
   })
 
+  it('layer meta should support internal reserved fields and extension fields', () => {
+    const layer: LayerDef = {
+      id: 'user-layer',
+      source: { type: 'local', root: '/tmp/user' },
+      priority: 100,
+      meta: {
+        __order: 1,
+        __origin: 'user',
+        __scanPolicy: 'user',
+        customFlag: true,
+      },
+    }
+
+    expect(layer.meta?.__origin).toBe('user')
+    expect(layer.meta?.__scanPolicy).toBe('user')
+
+    expectTypeOf<LayerDef>().toMatchTypeOf<{
+      meta?: {
+        __order?: number
+        __origin?: 'user' | 'module' | 'core'
+        __scanPolicy?: 'user' | 'standard'
+        [key: string]: unknown
+      }
+    }>()
+  })
+
   it('vona should mount ovfs instance directly', () => {
     expectTypeOf<OVFS>().toMatchTypeOf<{
       get: (path: string) => LayerAsset | undefined
@@ -58,6 +84,20 @@ describe('schema types', () => {
     }>()
     expectTypeOf<Vona>().toMatchTypeOf<{
       ovfs: OVFS
+    }>()
+  })
+
+  it('vona should mount layerRegistry instance directly', () => {
+    expectTypeOf<LayerRegistry>().toMatchTypeOf<{
+      register: (def: LayerDef) => void
+      unregister: (id: string) => void
+      getOrdered: () => LayerDef[]
+      get: (id: string) => LayerDef | undefined
+      has: (id: string) => boolean
+      ids: () => string[]
+    }>()
+    expectTypeOf<Vona>().toMatchTypeOf<{
+      layerRegistry: LayerRegistry
     }>()
   })
 
@@ -76,14 +116,4 @@ describe('schema types', () => {
     ) => Promise<void> | void>()
   })
 
-  it('layer:extend hook should consume LayerExtendContext', () => {
-    expectTypeOf<LayerExtendContext>().toMatchTypeOf<{
-      addLayer: (def: LayerDef) => LayerDef | null
-      config: LayerConfig
-    }>()
-
-    expectTypeOf<VonaHooks['layer:extend']>().toMatchTypeOf<(
-      ctx: LayerExtendContext,
-    ) => Promise<void> | void>()
-  })
 })

@@ -26,10 +26,20 @@ export interface LayerOptions {
   config: Record<string, ResourceScanConfig>
 }
 
+type WatchEvent = 'add' | 'change' | 'unlink'
+
 interface WatchTarget {
   type: ResourceType
   scanConfig: ResourceScanConfig
   rootName: string
+  rootAbs: string
+  isMatch: (path: string) => boolean
+}
+
+interface PendingTargetTask {
+  event: WatchEvent
+  target: WatchTarget
+  relativePath: string
 }
 
 function isWatchResourceLimitError(error: unknown): boolean {
@@ -57,39 +67,25 @@ function buildWatchTargets(def: LayerDef, config: Record<string, ResourceScanCon
     if (!scanConfig.enabled) {
       continue
     }
+
     const rootName = normalizeSlashes(scanConfig.name).replace(/^\/+|\/+$/g, '')
-    const root = join(def.source.root, rootName)
-    if (!existsSync(root)) {
+    const rootAbs = join(def.source.root, rootName)
+    if (!existsSync(rootAbs)) {
       continue
     }
+    const matchers = scanConfig.pattern.map(pattern => micromatch.matcher(pattern, {
+      ignore: scanConfig.ignore ?? [],
+    }))
+
     targets.push({
       type: type as ResourceType,
       scanConfig,
       rootName,
+      rootAbs,
+      isMatch: path => matchers.some(match => match(path)),
     })
   }
   return targets
-}
-
-function matchTargetFile(filePath: string, target: WatchTarget, layerRoot: string): string | null {
-  const relativePath = normalizeSlashes(relative(layerRoot, filePath))
-  if (relativePath.startsWith('../') || relativePath === target.rootName) {
-    return null
-  }
-
-  const prefix = `${target.rootName}/`
-  if (!relativePath.startsWith(prefix)) {
-    return null
-  }
-
-  const scanRelative = relativePath.slice(prefix.length)
-  const matched = micromatch.isMatch(scanRelative, target.scanConfig.pattern, {
-    ignore: target.scanConfig.ignore ?? [],
-  })
-  if (!matched) {
-    return null
-  }
-  return scanRelative
 }
 
 export function createStaticLayer(options: LayerOptions): Layer {
@@ -127,6 +123,11 @@ export function createDynamicLayer(options: LayerOptions): Layer {
   const watchers: Array<ReturnType<typeof chokidar.watch>> = []
   const assetsByFile = new Map<string, LayerAsset[]>()
   const callbacks: Array<(mutations: LayerMutation[]) => void> = []
+  const pendingByKey = new Map<string, PendingTargetTask>()
+
+  let disposed = false
+  let flushScheduled = false
+  let processing = Promise.resolve()
 
   const emitMutation = (mutations: LayerMutation[]): void => {
     if (mutations.length === 0) {
@@ -135,11 +136,102 @@ export function createDynamicLayer(options: LayerOptions): Layer {
     callbacks.forEach(cb => cb(mutations))
   }
 
+  const handleFileForTarget = async (
+    event: WatchEvent,
+    target: WatchTarget,
+    relativePath: string,
+  ): Promise<void> => {
+    if (disposed) {
+      return
+    }
+
+    const rawPath = normalizeSlashes(join(target.rootName, relativePath))
+    const previousAssets = assetsByFile.get(rawPath) ?? []
+    const nextAssets = event === 'unlink'
+      ? []
+      : scanSingleFile(relativePath, def, target.type, target.scanConfig.name)
+    const mutations: LayerMutation[] = []
+
+    for (const oldAsset of previousAssets) {
+      mutations.push({
+        op: 'removeById',
+        id: oldAsset.id,
+        reason: event,
+      })
+    }
+    assetsByFile.delete(rawPath)
+
+    for (const asset of nextAssets) {
+      mutations.push({
+        op: 'upsert',
+        asset,
+        reason: event,
+      })
+    }
+    if (nextAssets.length > 0) {
+      assetsByFile.set(rawPath, nextAssets)
+    }
+
+    emitMutation(mutations)
+  }
+
+  const scheduleFlush = (): void => {
+    if (flushScheduled) {
+      return
+    }
+    flushScheduled = true
+
+    queueMicrotask(() => {
+      flushScheduled = false
+      const tasks = [...pendingByKey.values()]
+      pendingByKey.clear()
+      if (tasks.length === 0) {
+        return
+      }
+
+      processing = processing
+        .then(async () => {
+          for (const task of tasks) {
+            if (disposed) {
+              return
+            }
+            await handleFileForTarget(task.event, task.target, task.relativePath)
+          }
+        })
+        .catch((error) => {
+          console.error(`[vona:layer] watcher queue error on layer "${def.id}":`, error)
+        })
+    })
+  }
+
+  const enqueueFileTask = (event: WatchEvent, target: WatchTarget, filePath: string): void => {
+    if (disposed) {
+      return
+    }
+
+    const relativePath = normalizeSlashes(relative(target.rootAbs, filePath))
+    if (!relativePath || relativePath.startsWith('../')) {
+      return
+    }
+    if (!target.isMatch(relativePath)) {
+      return
+    }
+
+    const key = `${target.type}:${relativePath}`
+    pendingByKey.set(key, {
+      event,
+      target,
+      relativePath,
+    })
+    scheduleFlush()
+  }
+
   const start = async (): Promise<void> => {
     if (def.source.type !== 'local') {
       return
     }
 
+    disposed = false
     const initialAssets = await scanLayer(def, config)
     for (const asset of initialAssets) {
       const list = assetsByFile.get(asset.path.relative) ?? []
@@ -152,8 +244,8 @@ export function createDynamicLayer(options: LayerOptions): Layer {
       return
     }
 
-    const createWatcher = (usePolling: boolean): ReturnType<typeof chokidar.watch> => {
-      return chokidar.watch(def.source.root, {
+    const createWatcher = (target: WatchTarget, usePolling: boolean): ReturnType<typeof chokidar.watch> => {
+      return chokidar.watch(target.rootAbs, {
         ignored: buildLayerIgnore(def),
         persistent: true,
         ignoreInitial: true,
@@ -163,84 +255,42 @@ export function createDynamicLayer(options: LayerOptions): Layer {
       })
     }
 
-    // 动态更新仅重算当前文件关联的资源键，避免全量重扫。
-    const handleFileForTarget = async (
-      event: 'add' | 'change' | 'unlink',
-      target: WatchTarget,
-      relativePath: string,
-    ): Promise<void> => {
-      const rawPath = normalizeSlashes(join(target.scanConfig.name, relativePath))
-      const previousAssets = assetsByFile.get(rawPath) ?? []
-      const nextAssets = event === 'unlink'
-        ? []
-        : await scanSingleFile(relativePath, def, target.type, target.scanConfig.name)
-      const mutations: LayerMutation[] = []
+    const mountWatcher = (target: WatchTarget, usePolling: boolean, index?: number): Promise<void> => {
+      const watcher = createWatcher(target, usePolling)
+      const watcherIndex = typeof index === 'number' ? index : watchers.length
+      watchers[watcherIndex] = watcher
 
-      for (const oldAsset of previousAssets) {
-        mutations.push({
-          op: 'removeById',
-          id: oldAsset.id,
-          reason: event,
-        })
-      }
-      assetsByFile.delete(rawPath)
-
-      for (const asset of nextAssets) {
-        mutations.push({
-          op: 'upsert',
-          asset,
-          reason: event,
-        })
-      }
-      if (nextAssets.length > 0) {
-        assetsByFile.set(rawPath, nextAssets)
-      }
-      emitMutation(mutations)
-    }
-
-    const handleFile = async (event: 'add' | 'change' | 'unlink', filePath: string): Promise<void> => {
-      for (const target of targets) {
-        const relativePath = matchTargetFile(filePath, target, def.source.root)
-        if (!relativePath) {
-          continue
+      watcher.on('add', path => enqueueFileTask('add', target, path))
+      watcher.on('change', path => enqueueFileTask('change', target, path))
+      watcher.on('unlink', path => enqueueFileTask('unlink', target, path))
+      watcher.on('error', (error) => {
+        if (isWatchResourceLimitError(error) && !usePolling) {
+          console.warn(`[vona:layer] watcher fallback to polling on layer "${def.id}"`)
+          void watcher.close()
+          void mountWatcher(target, true, watcherIndex)
+          return
         }
-        await handleFileForTarget(event, target, relativePath)
-      }
+        console.error(`[vona:layer] watcher error on layer "${def.id}":`, error)
+      })
+
+      return new Promise<void>((resolve) => {
+        watcher.once('ready', () => resolve())
+        watcher.once('error', () => resolve())
+      })
     }
 
-    const watcher = createWatcher(false)
-    const readyTask = new Promise<void>((resolve) => {
-      watcher.once('ready', () => resolve())
-      watcher.once('error', () => resolve())
-    })
-
-    watcher.on('add', path => void handleFile('add', path))
-    watcher.on('change', path => void handleFile('change', path))
-    watcher.on('unlink', path => void handleFile('unlink', path))
-    watcher.on('error', (error) => {
-      if (isWatchResourceLimitError(error)) {
-        console.warn(`[vona:layer] watcher fallback to polling on layer "${def.id}"`)
-        void watcher.close()
-        const pollingWatcher = createWatcher(true)
-        pollingWatcher.on('add', path => void handleFile('add', path))
-        pollingWatcher.on('change', path => void handleFile('change', path))
-        pollingWatcher.on('unlink', path => void handleFile('unlink', path))
-        pollingWatcher.on('error', (pollingError) => {
-          console.error(`[vona:layer] watcher error on layer "${def.id}":`, pollingError)
-        })
-        watchers.push(pollingWatcher)
-        return
-      }
-      console.error(`[vona:layer] watcher error on layer "${def.id}":`, error)
-    })
-
-    watchers.push(watcher)
-    await readyTask
+    await Promise.all(targets.map(target => mountWatcher(target, false)))
   }
 
   const stop = (): void => {
+    disposed = true
+    pendingByKey.clear()
+    processing = Promise.resolve()
+
     for (const watcher of watchers) {
-      void watcher.close()
+      if (watcher) {
+        void watcher.close()
+      }
     }
     watchers.length = 0
     assetsByFile.clear()

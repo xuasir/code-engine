@@ -45,5 +45,8 @@
   "pnpmCatalogLens.hover": true,
   "pnpmCatalogLens.namedCatalogsLabel": true,
   "trae.tab.enableRename": false,
-  "trae.tab.enableAutoImport": false
+  "trae.tab.enableAutoImport": false,
+  "cSpell.words": [
+    "ovfs"
+  ]
 }

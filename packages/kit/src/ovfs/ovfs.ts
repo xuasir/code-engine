@@ -62,24 +62,68 @@ function isStackEqual(before: LayerAsset[], after: LayerAsset[]): boolean {
   return true
 }
 
+const EMPTY_STACK: LayerAsset[] = []
+const EMPTY_OVERRIDES: Partial<LayerAsset>[] = []
+const INDEX_BUILD_THRESHOLD = 8
+
 export function createOVFS(): OVFS {
   const byPath = new Map<string, LayerAsset[]>()
+  const byPathIndex = new Map<string, Map<string, number>>()
   const byType = new Map<ResourceType, Map<string, LayerAsset>>()
   const byId = new Map<string, LayerAsset>()
   const callbacks: Array<(changes: OVFSResourceChange[]) => void> = []
+  const sortedPathCache = new Map<ResourceType, string[]>()
+
+  const clearSortedPathCache = (): void => {
+    sortedPathCache.clear()
+  }
+
+  const ensurePathStack = (path: string): LayerAsset[] => {
+    let stack = byPath.get(path)
+    if (!stack) {
+      stack = []
+      byPath.set(path, stack)
+    }
+    return stack
+  }
+
+  const rebuildPathIndex = (path: string, stack: LayerAsset[]): void => {
+    if (stack.length <= 1) {
+      byPathIndex.delete(path)
+      return
+    }
+
+    let indexById = byPathIndex.get(path)
+    if (!indexById) {
+      indexById = new Map<string, number>()
+      byPathIndex.set(path, indexById)
+    }
+    else {
+      indexById.clear()
+    }
+
+    for (let i = 0; i < stack.length; i++) {
+      indexById.set(stack[i].id, i)
+    }
+  }
 
   const removeWinner = (type: ResourceType, path: string): void => {
     byType.get(type)?.delete(path)
   }
 
-  const setWinner = (path: string): void => {
-    const stack = byPath.get(path) ?? []
+  const setWinner = (path: string, stack: LayerAsset[]): void => {
     const winner = stack[0]
     if (!winner) {
       return
     }
 
-    winner.overrides = stack.slice(1).map(toOverride)
+    if (stack.length <= 1) {
+      winner.overrides = EMPTY_OVERRIDES
+    }
+    else {
+      winner.overrides = stack.slice(1).map(toOverride)
+    }
+
     if (!byType.has(winner.type)) {
       byType.set(winner.type, new Map<string, LayerAsset>())
     }
@@ -87,62 +131,125 @@ export function createOVFS(): OVFS {
   }
 
   const syncPath = (path: string, type: ResourceType): void => {
-    const stack = byPath.get(path) ?? []
+    const stack = byPath.get(path) ?? EMPTY_STACK
     if (stack.length === 0) {
       byPath.delete(path)
+      byPathIndex.delete(path)
       removeWinner(type, path)
       return
     }
 
     stack.sort(compareAsset)
-    byPath.set(path, stack)
-    setWinner(path)
+    rebuildPathIndex(path, stack)
+    setWinner(path, stack)
   }
 
-  const upsertAsset = (asset: LayerAsset): void => {
+  const removeFromPath = (path: string, id: string): boolean => {
+    const stack = byPath.get(path)
+    if (!stack || stack.length === 0) {
+      return false
+    }
+
+    const indexById = byPathIndex.get(path)
+    if (!indexById) {
+      const index = stack.findIndex(item => item.id === id)
+      if (index < 0) {
+        return false
+      }
+      const lastIndex = stack.length - 1
+      if (index !== lastIndex) {
+        stack[index] = stack[lastIndex]
+      }
+      stack.pop()
+      if (stack.length === 0) {
+        byPath.delete(path)
+        byPathIndex.delete(path)
+      }
+      return true
+    }
+
+    const index = indexById.get(id)
+    if (typeof index !== 'number') {
+      return false
+    }
+
+    const lastIndex = stack.length - 1
+    if (index !== lastIndex) {
+      const last = stack[lastIndex]
+      stack[index] = last
+      indexById.set(last.id, index)
+    }
+    stack.pop()
+    indexById.delete(id)
+
+    if (stack.length === 0) {
+      byPath.delete(path)
+      byPathIndex.delete(path)
+    }
+
+    return true
+  }
+
+  const upsertAsset = (asset: LayerAsset, dirtyPaths: Set<string>): void => {
     const previous = byId.get(asset.id)
     if (previous && previous.key !== asset.key) {
-      const previousStack = (byPath.get(previous.key) ?? []).filter(item => item.id !== previous.id)
-      if (previousStack.length === 0) {
-        byPath.delete(previous.key)
-        removeWinner(previous.type, previous.key)
-      }
-      else {
-        byPath.set(previous.key, previousStack)
-        syncPath(previous.key, previous.type)
+      if (removeFromPath(previous.key, previous.id)) {
+        dirtyPaths.add(previous.key)
       }
     }
 
     byId.set(asset.id, asset)
 
-    const nextStack = byPath.get(asset.key) ?? []
-    const index = nextStack.findIndex(item => item.id === asset.id)
-    if (index >= 0) {
-      nextStack[index] = asset
+    const stack = ensurePathStack(asset.key)
+    const indexById = byPathIndex.get(asset.key)
+    const samePathUpdate = previous?.key === asset.key
+
+    if (samePathUpdate) {
+      const found = indexById?.get(asset.id)
+      const index = typeof found === 'number'
+        ? found
+        : stack.findIndex(item => item.id === asset.id)
+
+      if (index >= 0) {
+        if (stack[index] !== asset) {
+          stack[index] = asset
+          dirtyPaths.add(asset.key)
+        }
+      }
+      else {
+        const nextIndex = stack.length
+        stack.push(asset)
+        if (indexById) {
+          indexById.set(asset.id, nextIndex)
+        }
+        else if (stack.length > INDEX_BUILD_THRESHOLD) {
+          rebuildPathIndex(asset.key, stack)
+        }
+        dirtyPaths.add(asset.key)
+      }
     }
     else {
-      nextStack.push(asset)
+      const nextIndex = stack.length
+      stack.push(asset)
+      if (indexById) {
+        indexById.set(asset.id, nextIndex)
+      }
+      else if (stack.length > INDEX_BUILD_THRESHOLD) {
+        rebuildPathIndex(asset.key, stack)
+      }
+      dirtyPaths.add(asset.key)
     }
-
-    byPath.set(asset.key, nextStack)
-    syncPath(asset.key, asset.type)
   }
 
-  const removeByIdInternal = (id: string): LayerAsset | undefined => {
+  const removeByIdInternal = (id: string, dirtyPaths: Set<string>): LayerAsset | undefined => {
     const current = byId.get(id)
     if (!current) {
       return undefined
     }
 
     byId.delete(id)
-    const nextStack = (byPath.get(current.key) ?? []).filter(item => item.id !== id)
-    if (nextStack.length === 0) {
-      byPath.delete(current.key)
-      removeWinner(current.type, current.key)
-    }
-    else {
-      byPath.set(current.key, nextStack)
-      syncPath(current.key, current.type)
+    if (removeFromPath(current.key, id)) {
+      dirtyPaths.add(current.key)
     }
 
     return current
@@ -167,11 +274,13 @@ export function createOVFS(): OVFS {
     const touchedPaths: string[] = []
     const beforeMap = new Map<string, LayerAsset | undefined>()
     const beforeStackMap = new Map<string, LayerAsset[]>()
+    const dirtyPaths = new Set<string>()
 
     const touchPath = (path: string): void => {
       if (!beforeStackMap.has(path)) {
-        beforeMap.set(path, byPath.get(path)?.[0])
-        beforeStackMap.set(path, [...(byPath.get(path) ?? [])])
+        const stack = byPath.get(path) ?? EMPTY_STACK
+        beforeMap.set(path, stack[0])
+        beforeStackMap.set(path, [...stack])
         touchedPaths.push(path)
       }
     }
@@ -183,7 +292,7 @@ export function createOVFS(): OVFS {
           touchPath(previousById.key)
         }
         touchPath(mutation.asset.key)
-        upsertAsset(mutation.asset)
+        upsertAsset(mutation.asset, dirtyPaths)
         continue
       }
 
@@ -192,18 +301,37 @@ export function createOVFS(): OVFS {
         continue
       }
       touchPath(current.key)
-      removeByIdInternal(mutation.id)
+      removeByIdInternal(mutation.id, dirtyPaths)
+    }
+
+    for (const path of dirtyPaths) {
+      const beforeStack = beforeStackMap.get(path)
+      const currentStack = byPath.get(path) ?? EMPTY_STACK
+      if (beforeStack && isStackEqual(beforeStack, currentStack)) {
+        continue
+      }
+      const type = beforeMap.get(path)?.type ?? currentStack[0]?.type
+      if (!type) {
+        continue
+      }
+      syncPath(path, type)
+    }
+
+    if (dirtyPaths.size > 0) {
+      clearSortedPathCache()
     }
 
     const changes: OVFSResourceChange[] = []
 
     for (const path of touchedPaths) {
       const before = beforeMap.get(path)
-      const after = byPath.get(path)?.[0]
-      const beforeStack = beforeStackMap.get(path) ?? []
-      const afterStack = [...(byPath.get(path) ?? [])]
+      const afterStackView = byPath.get(path) ?? EMPTY_STACK
+      const after = afterStackView[0]
+      const beforeStack = beforeStackMap.get(path) ?? EMPTY_STACK
+      const stackChanged = !isStackEqual(beforeStack, afterStackView)
 
       if (!before && after) {
+        const afterStack = [...afterStackView]
         changes.push({
           type: 'add',
           path,
@@ -218,6 +346,7 @@ export function createOVFS(): OVFS {
       }
 
       if (before && !after) {
+        const afterStack = [...afterStackView]
         changes.push({
           type: 'unlink',
           path,
@@ -232,7 +361,8 @@ export function createOVFS(): OVFS {
       }
 
       if (before && after) {
-        if (before.id !== after.id || before !== after || !isStackEqual(beforeStack, afterStack)) {
+        if (before.id !== after.id || before !== after || stackChanged) {
+          const afterStack = [...afterStackView]
           changes.push({
             type: 'change',
             path,
@@ -262,7 +392,11 @@ export function createOVFS(): OVFS {
       if (!winners) {
         return
       }
-      const paths = [...winners.keys()].sort((a, b) => a.localeCompare(b))
+      let paths = sortedPathCache.get(resourceType)
+      if (!paths) {
+        paths = [...winners.keys()].sort((a, b) => a.localeCompare(b))
+        sortedPathCache.set(resourceType, paths)
+      }
       for (const path of paths) {
         const winner = winners.get(path)
         if (!winner) {
@@ -272,7 +406,7 @@ export function createOVFS(): OVFS {
           path,
           type: resourceType,
           winner,
-          stack: [...(byPath.get(path) ?? [])],
+          stack: [...(byPath.get(path) ?? EMPTY_STACK)],
         })
       }
     }
@@ -295,7 +429,7 @@ export function createOVFS(): OVFS {
     },
 
     getStack: (path) => {
-      return [...(byPath.get(path) ?? [])]
+      return [...(byPath.get(path) ?? EMPTY_STACK)]
     },
 
     has: (path) => {
@@ -318,8 +452,10 @@ export function createOVFS(): OVFS {
 
     clear: () => {
       byPath.clear()
+      byPathIndex.clear()
       byType.clear()
       byId.clear()
+      clearSortedPathCache()
     },
 
     stats: () => {

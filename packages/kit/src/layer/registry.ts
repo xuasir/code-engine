@@ -1,14 +1,7 @@
-import type { LayerDef } from '@vona-js/schema'
+import type { LayerDef, LayerRegistry } from '@vona-js/schema'
 import { PriorityHeap } from '@vona-js/utils'
 
-export interface LayerRegistry {
-  register: (def: LayerDef) => void
-  unregister: (id: string) => void
-  getOrdered: () => LayerDef[]
-  get: (id: string) => LayerDef | undefined
-  has: (id: string) => boolean
-  ids: () => string[]
-}
+export type { LayerRegistry } from '@vona-js/schema'
 
 export function createLayerRegistry(): LayerRegistry {
   const layers = new Map<string, LayerDef>()

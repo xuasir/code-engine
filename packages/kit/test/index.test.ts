@@ -14,14 +14,14 @@ describe('kit exports', () => {
 
     expect((kit as any).setVonaCtx).toBeUndefined()
     expect((kit as any).runWithVonaContext).toBeUndefined()
-    expect((kit as any).createPipeline).toBeUndefined()
+    expect((kit as any).createLayerRuntime).toBeUndefined()
     expect((kit as any).createOVFS).toBeUndefined()
   })
 
   it('internal 子路径暴露内核 API', () => {
     expect(internal.setVonaCtx).toBeTypeOf('function')
     expect(internal.runWithVonaContext).toBeTypeOf('function')
-    expect(internal.createPipeline).toBeTypeOf('function')
+    expect(internal.createLayerRuntime).toBeTypeOf('function')
     expect(internal.createOVFS).toBeTypeOf('function')
   })
 })

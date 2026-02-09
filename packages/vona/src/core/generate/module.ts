@@ -41,11 +41,26 @@ export default defineModule({
       })
     }, 80)
 
+    const printOVFSTree = (): void => {
+      const lines = buildOVFSTreeLines(vona.ovfs)
+      if (lines.length > 0) {
+        logger.info(lines.join('\n'))
+      }
+    }
+
     const printOVFSTreeDebounced = createPrintOVFSTreeDebounced(vona.ovfs, (msg) => {
       logger.info(msg)
     })
 
-    vona.hook('ovfs:change', (_changes) => {
+    vona.hook('ovfs:change', (changes) => {
+      if (changes.length === 0) {
+        // 初始化快照需要立即输出，避免被后续 debounce 覆盖
+        printOVFSTree()
+        void writeTypes().catch((error) => {
+          logger.error(error)
+        })
+        return
+      }
       // 基于 ovfs 打印资源树
       printOVFSTreeDebounced()
       writeTypesDebounced()

@@ -74,10 +74,6 @@ catalogs:
     vue:
       specifier: ^3.5.18
       version: 3.5.18
-  inlined:
-    '@antfu/utils':
-      specifier: ^9.1.0
-      version: 9.2.0
   prod:
     c12:
       specifier: ^3.2.0
@@ -107,8 +103,11 @@ catalogs:
       specifier: ^1.0.7
       version: 1.0.7
     fast-glob:
-      specifier: ^3.3.2
+      specifier: ^3.3.3
       version: 3.3.3
+    fs-extra:
+      specifier: ^11.3.3
+      version: 11.3.3
     hookable:
       specifier: ^5.5.3
       version: 5.5.3
@@ -141,6 +140,12 @@ catalogs:
       specifier: ^3.2.4
       version: 3.2.4
   types:
+    '@types/chokidar':
+      specifier: ^2.1.7
+      version: 2.1.7
+    '@types/fs-extra':
+      specifier: ^11.0.4
+      version: 11.0.4
     '@types/micromatch':
       specifier: ^4.0.10
       version: 4.0.10
@@ -155,14 +160,11 @@ importers:
       '@antfu/eslint-config':
         specifier: catalog:cli
         version: 5.2.1(@vue/compiler-sfc@3.5.18)(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(jiti@2.5.1)(tsx@4.20.4)(yaml@2.8.1))
-      '@antfu/utils':
-        specifier: catalog:inlined
-        version: 9.2.0
       '@types/chokidar':
-        specifier: ^2.1.7
+        specifier: catalog:types
         version: 2.1.7
       '@types/fs-extra':
-        specifier: ^11.0.4
+        specifier: catalog:types
         version: 11.0.4
       '@types/node':
         specifier: catalog:types
@@ -171,16 +173,16 @@ importers:
         specifier: catalog:cli
         version: 10.2.3
       chokidar:
-        specifier: ^5.0.0
+        specifier: catalog:prod
         version: 5.0.0
       eslint:
         specifier: catalog:cli
         version: 9.33.0(jiti@2.5.1)
       fast-glob:
-        specifier: ^3.3.3
+        specifier: catalog:prod
         version: 3.3.3
       fs-extra:
-        specifier: ^11.3.3
+        specifier: catalog:prod
         version: 11.3.3
       lint-staged:
         specifier: catalog:cli

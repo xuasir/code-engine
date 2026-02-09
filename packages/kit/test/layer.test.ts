@@ -1,7 +1,7 @@
 import type { LayerDef, OVFSMutation, ResourceScanConfig } from '@vona-js/schema'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createAsset, scanLayer } from '../src/layer/scanner'
+import { createAsset, scanLayer, scanSingleFile } from '../src/layer/scanner'
 import { createOVFS } from '../src/ovfs/ovfs'
 
 describe('scanner', () => {
@@ -62,6 +62,14 @@ describe('scanner', () => {
     expect(dynamicPage?.meta.routePath).toBe('/users/:id')
     expect(staticPage?.meta.routePath).toBe('/users/create')
     expect((staticPage?.meta.routeScore ?? 0) > (dynamicPage?.meta.routeScore ?? 0)).toBe(true)
+  })
+
+  it('scanSingleFile 应同步返回并遵循扫描规则', () => {
+    const result = scanSingleFile('users/[id].vue', testLayer, 'pages', 'pages')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].key).toBe('pages/users/[id]')
+    expect(result).not.toBeInstanceOf(Promise)
   })
 })
 

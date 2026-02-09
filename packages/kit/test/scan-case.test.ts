@@ -90,4 +90,23 @@ describe('scan-case.md - 索引到 OVFS 路径映射', () => {
 
     expect(staticScore).toBeGreaterThan(dynamicScore)
   })
+
+  it('并行扫描后输出顺序应保持稳定', async () => {
+    const baseline = (await scanLayer(layer, config)).map(asset => asset.key)
+
+    for (let i = 0; i < 5; i++) {
+      const current = (await scanLayer(layer, config)).map(asset => asset.key)
+      expect(current).toEqual(baseline)
+    }
+  })
+
+  it('flat 类型应过滤超过一层目录的资源', async () => {
+    const pluginKeys = (await scanLayer(layer, config))
+      .filter(asset => asset.type === 'plugins')
+      .map(asset => asset.key)
+
+    expect(pluginKeys).toContain('plugins/Auth')
+    expect(pluginKeys).toContain('plugins/sso')
+    expect(pluginKeys).not.toContain('plugins/sso/admin')
+  })
 })
