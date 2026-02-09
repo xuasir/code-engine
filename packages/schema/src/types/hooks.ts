@@ -1,10 +1,15 @@
 import type { Schema, SchemaDefinition } from 'untyped'
 import type { LayerAsset } from './asset'
 import type { Vona } from './engine'
-import type { ResourceType } from './layer'
+import type { LayerConfig, LayerDef, ResourceType } from './layer'
 import type { OVFSResourceChange } from './ovfs'
 
 export type HookResult = Promise<void> | void
+
+export interface LayerExtendContext {
+  addLayer: (def: LayerDef) => LayerDef | null
+  config: LayerConfig
+}
 
 export interface VonaHooks {
   /**
@@ -28,7 +33,7 @@ export interface VonaHooks {
   /**
    * layer 扩展
    */
-  'layer:extend': (vona: Vona) => HookResult
+  'layer:extend': (ctx: LayerExtendContext) => HookResult
   /**
    * layer 加载完成
    */

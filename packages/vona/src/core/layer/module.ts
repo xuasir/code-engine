@@ -28,8 +28,6 @@ export const LayerModule = defineModule({
         return
       }
 
-      await vona.callHook('layer:extend', vona)
-
       stopOVFSListener = vona.ovfs.subscribe((changes) => {
         if (changes.length === 0) {
           return
@@ -37,7 +35,9 @@ export const LayerModule = defineModule({
         void vona.callHook('ovfs:change', changes, vona)
       })
 
-      await pipeline.start(layerConfig)
+      await pipeline.start(layerConfig, {
+        onExtend: ctx => vona.callHook('layer:extend', ctx),
+      })
       void vona.callHook('ovfs:change', [], vona)
 
       const manifest = vona.ovfs.toManifest()

@@ -1,4 +1,4 @@
-import type { LayerAsset, LayerConfig, LayerDef, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
+import type { LayerAsset, LayerConfig, LayerDef, LayerExtendContext, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 describe('schema types', () => {
@@ -73,6 +73,17 @@ describe('schema types', () => {
     expectTypeOf<VonaHooks['ovfs:change']>().toMatchTypeOf<(
       changes: OVFSResourceChange[],
       vona: Vona,
+    ) => Promise<void> | void>()
+  })
+
+  it('layer:extend hook should consume LayerExtendContext', () => {
+    expectTypeOf<LayerExtendContext>().toMatchTypeOf<{
+      addLayer: (def: LayerDef) => LayerDef | null
+      config: LayerConfig
+    }>()
+
+    expectTypeOf<VonaHooks['layer:extend']>().toMatchTypeOf<(
+      ctx: LayerExtendContext,
     ) => Promise<void> | void>()
   })
 })

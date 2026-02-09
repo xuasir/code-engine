@@ -1,6 +1,7 @@
 import type {
   LayerConfig,
   LayerDef,
+  LayerExtendContext,
   OVFS,
   OVFSChangeReason,
   OVFSMutation,
@@ -38,9 +39,16 @@ export interface PipelineOptions {
   ovfs?: OVFS
 }
 
+export type PipelineExtendContext = LayerExtendContext
+
+export interface PipelineStartOptions {
+  onExtend?: (ctx: PipelineExtendContext) => Promise<void> | void
+}
+
 export interface Pipeline {
-  start: (config: LayerConfig) => Promise<void>
+  start: (config: LayerConfig, options?: PipelineStartOptions) => Promise<void>
   stop: () => Promise<void>
+  addLayer: (def: LayerDef) => LayerDef | null
   state: () => PipelineState
 }
 
@@ -57,6 +65,7 @@ function getUserSrcLayer(root: string): LayerDef | null {
   if (!existsSync(srcPath)) {
     return null
   }
+
   return {
     id: 'user',
     source: {
@@ -83,16 +92,6 @@ function resolveLayerDefRoot(rootDir: string, def: LayerDef): LayerDef {
       ...def.source,
       root: absoluteRoot,
     },
-  }
-}
-
-function assertValidLayerDefs(layerDefs: LayerDef[]): void {
-  const idSet = new Set<string>()
-  for (const def of layerDefs) {
-    if (idSet.has(def.id)) {
-      throw new Error(`Duplicate layer id found: ${def.id}`)
-    }
-    idSet.add(def.id)
   }
 }
 
@@ -163,11 +162,13 @@ function normalizeMutations(mutations: LayerMutation[]): {
         asset: mutation.asset,
       }
     }
+
     return {
       op: 'removeById',
       id: mutation.id,
     }
   })
+
   return {
     mutations: normalized,
     reason: toReason(mutations[0]?.reason),
@@ -177,10 +178,15 @@ function normalizeMutations(mutations: LayerMutation[]): {
 export function createPipeline(options: PipelineOptions): Pipeline {
   const { rootDir, ovfs: providedOVFS } = options
   const ovfs = providedOVFS ?? createOVFS()
+
   let status: PipelineStatus = 'idle'
   let registry = createLayerRegistry()
   let layers: Layer[] = []
   let stats: PipelineStats = { ...EMPTY_STATS }
+
+  let isStarting = false
+  let activeStartConfig: LayerConfig | null = null
+  let nextOrder = 0
 
   const stop = async (): Promise<void> => {
     if (layers.length > 0) {
@@ -188,6 +194,7 @@ export function createPipeline(options: PipelineOptions): Pipeline {
         layer.stop()
       }
     }
+
     layers = []
     registry = createLayerRegistry()
     stats = { ...EMPTY_STATS }
@@ -195,7 +202,34 @@ export function createPipeline(options: PipelineOptions): Pipeline {
     status = 'stopped'
   }
 
-  const start = async (config: LayerConfig): Promise<void> => {
+  const addLayer = (def: LayerDef): LayerDef | null => {
+    if (!isStarting || !activeStartConfig) {
+      throw new Error('addLayer can only be used during pipeline.start')
+    }
+
+    const normalized = resolveLayerDefRoot(rootDir, def)
+    const withOrder: LayerDef = {
+      ...normalized,
+      meta: {
+        ...(normalized.meta ?? {}),
+        __order: nextOrder++,
+      },
+    }
+
+    const materialized = materializeRemoteLayer(rootDir, activeStartConfig, withOrder)
+    if (!materialized) {
+      return null
+    }
+
+    if (registry.has(materialized.id)) {
+      throw new Error(`Duplicate layer id found: ${materialized.id}`)
+    }
+
+    registry.register(materialized)
+    return materialized
+  }
+
+  const start = async (config: LayerConfig, options?: PipelineStartOptions): Promise<void> => {
     if (status === 'running') {
       throw new Error('Pipeline already running')
     }
@@ -211,83 +245,90 @@ export function createPipeline(options: PipelineOptions): Pipeline {
 
     assertValidResourceConfig(config)
 
-    const sourceDefs = [...(config.defs ?? [])].map(def => resolveLayerDefRoot(rootDir, def))
-    if (config.enabled) {
-      const userSrcLayer = getUserSrcLayer(rootDir)
-      if (userSrcLayer) {
-        sourceDefs.unshift(resolveLayerDefRoot(rootDir, userSrcLayer))
-      }
-    }
+    isStarting = true
+    activeStartConfig = config
+    nextOrder = 0
 
-    assertValidLayerDefs(sourceDefs)
-
-    const preparedDefs = sourceDefs.map((def, index) => ({
-      ...def,
-      meta: {
-        ...(def.meta ?? {}),
-        __order: index,
-      },
-    }))
-
-    const materializedDefs = preparedDefs
-      .map(def => materializeRemoteLayer(rootDir, config, def))
-      .filter(Boolean) as LayerDef[]
-
-    for (const def of materializedDefs) {
-      registry.register(def)
-    }
-
-    const orderedDefs = registry.getOrdered()
-    let staticCount = 0
-    let dynamicCount = 0
-
-    for (const def of orderedDefs) {
-      const layer = createLayer({
-        def,
-        config: resourceConfig,
-      })
-      await layer.start()
-      layers.push(layer)
-
-      if (layer.type === 'static') {
-        staticCount++
-      }
-      else {
-        dynamicCount++
-      }
-    }
-
-    const allAssets = layers.flatMap(layer => layer.getAssets())
-    const hydrateMutations: OVFSMutation[] = allAssets.map(asset => ({ op: 'upsert', asset }))
-    ovfs.mutate(hydrateMutations, { silent: true, reason: 'hydrate' })
-
-    for (const layer of layers) {
-      if (layer.type !== 'dynamic') {
-        continue
-      }
-      layer.onMutation((layerMutations) => {
-        if (layerMutations.length === 0) {
-          return
+    try {
+      if (config.enabled) {
+        const userSrcLayer = getUserSrcLayer(rootDir)
+        if (userSrcLayer) {
+          addLayer(userSrcLayer)
         }
-        const normalized = normalizeMutations(layerMutations)
-        ovfs.mutate(normalized.mutations, { reason: normalized.reason })
+      }
+
+      for (const def of config.defs ?? []) {
+        addLayer(def)
+      }
+
+      await options?.onExtend?.({
+        addLayer,
+        config,
       })
-    }
 
-    stats = {
-      layerCount: orderedDefs.length,
-      rawAssetCount: allAssets.length,
-      resolvedAssetCount: ovfs.stats().totalResources,
-      staticLayers: staticCount,
-      dynamicLayers: dynamicCount,
-    }
+      const orderedDefs = registry.getOrdered()
+      let staticCount = 0
+      let dynamicCount = 0
 
-    status = 'running'
+      for (const def of orderedDefs) {
+        const layer = createLayer({
+          def,
+          config: resourceConfig,
+        })
+        await layer.start()
+        layers.push(layer)
+
+        if (layer.type === 'static') {
+          staticCount++
+        }
+        else {
+          dynamicCount++
+        }
+      }
+
+      const allAssets = layers.flatMap(layer => layer.getAssets())
+      const hydrateMutations: OVFSMutation[] = allAssets.map(asset => ({ op: 'upsert', asset }))
+      ovfs.mutate(hydrateMutations, { silent: true, reason: 'hydrate' })
+
+      for (const layer of layers) {
+        if (layer.type !== 'dynamic') {
+          continue
+        }
+
+        layer.onMutation((layerMutations) => {
+          if (layerMutations.length === 0) {
+            return
+          }
+          const normalized = normalizeMutations(layerMutations)
+          ovfs.mutate(normalized.mutations, { reason: normalized.reason })
+        })
+      }
+
+      stats = {
+        layerCount: orderedDefs.length,
+        rawAssetCount: allAssets.length,
+        resolvedAssetCount: ovfs.stats().totalResources,
+        staticLayers: staticCount,
+        dynamicLayers: dynamicCount,
+      }
+
+      status = 'running'
+    }
+    catch (error) {
+      await stop()
+      throw error
+    }
+    finally {
+      isStarting = false
+      activeStartConfig = null
+      nextOrder = 0
+    }
   }
 
   return {
     start,
     stop,
+    addLayer,
     state: () => {
       return {
         status,

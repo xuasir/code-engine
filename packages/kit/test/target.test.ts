@@ -294,6 +294,153 @@ describe('target.md - 堆结构管理层测试', () => {
     await pipeline.stop()
     expect(pipeline.state().status).toBe('stopped')
   })
+
+  it('pipeline.addLayer 在 start 生命周期外调用应抛错', () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const pipeline = createPipeline({ rootDir: fixturesDir })
+
+    expect(() => {
+      pipeline.addLayer({
+        id: 'out-of-start',
+        source: { type: 'local', root: './layer1', dynamic: false },
+        priority: 100,
+      })
+    }).toThrow('addLayer can only be used during pipeline.start')
+  })
+
+  it('pipeline.start 应允许 onExtend 注册额外 layer', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: false,
+        defs: [],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
+        },
+      }
+
+      await pipeline.start(layerConfig, {
+        onExtend: (ctx) => {
+          ctx.addLayer({
+            id: 'ext-layer2',
+            source: { type: 'local', root: './layer2', dynamic: false },
+            priority: 100,
+          })
+        },
+      })
+
+      expect(pipeline.state().registry.has('ext-layer2')).toBe(true)
+      expect(pipeline.state().ovfs.get('plugins/c')).toBeTruthy()
+    })
+  })
+
+  it('同优先级下配置层应优先于 onExtend 注入层', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: false,
+        defs: [
+          { id: 'base', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+        ],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
+        },
+      }
+
+      await pipeline.start(layerConfig, {
+        onExtend: (ctx) => {
+          ctx.addLayer({
+            id: 'ext',
+            source: { type: 'local', root: './layer2', dynamic: false },
+            priority: 100,
+          })
+        },
+      })
+
+      expect(pipeline.state().ovfs.get('plugins/b')?.meta.layerId).toBe('base')
+    })
+  })
+
+  it('onExtend 注入重复 id 时，start 应失败', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: false,
+        defs: [
+          { id: 'dup', source: { type: 'local', root: './layer1', dynamic: false }, priority: 100 },
+        ],
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
+        },
+      }
+
+      await expect(pipeline.start(layerConfig, {
+        onExtend: (ctx) => {
+          ctx.addLayer({
+            id: 'dup',
+            source: { type: 'local', root: './layer2', dynamic: false },
+            priority: 100,
+          })
+        },
+      })).rejects.toThrow('Duplicate layer id found: dup')
+    })
+  })
+
+  it('onExtend 注入 remote 层，缓存缺失时应返回 null 并告警', async () => {
+    const fixturesDir = join(__dirname, 'fixtures', 'target')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let added: LayerDef | null | undefined
+
+    await withPipeline(fixturesDir, async (pipeline) => {
+      const layerConfig: LayerConfig = {
+        enabled: false,
+        defs: [],
+        remote: {
+          cacheDir: '.vona/layers',
+          preferCache: true,
+        },
+        config: {
+          plugins: {
+            enabled: true,
+            name: 'plugins',
+            pattern: ['**/*.{ts,js}'],
+            ignore: [],
+          },
+        },
+      }
+
+      await pipeline.start(layerConfig, {
+        onExtend: (ctx) => {
+          added = ctx.addLayer({
+            id: 'remote-missing',
+            source: { type: 'remote', root: '@scope/missing' },
+            priority: 100,
+          })
+        },
+      })
+
+      expect(added).toBeNull()
+      expect(pipeline.state().registry.has('remote-missing')).toBe(false)
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+    })
+
+    warnSpy.mockRestore()
+  })
 })
 
 describe('target.md - OVFS 资源管理测试', () => {
