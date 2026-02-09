@@ -1,5 +1,6 @@
 import type { Vona } from '@vona-js/schema'
-import { createPipeline, defineModule, useLogger } from '@vona-js/kit'
+import { defineModule, useLogger } from '@vona-js/kit'
+import { createPipeline } from '@vona-js/kit/internal'
 
 export const LayerModule = defineModule({
   meta: {

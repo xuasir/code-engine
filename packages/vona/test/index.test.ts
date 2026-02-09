@@ -3,7 +3,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { join } from 'node:path'
 import { createHooks } from 'hookable'
 import { describe, expect, it } from 'vitest'
-import { addLayer, createEnv, createOVFS, createPipeline, runWithVonaContext } from '../../kit/src'
+import { addLayer } from '../../kit/src'
+import { createEnv, createOVFS, createPipeline, runWithVonaContext } from '../../kit/src/internal'
 
 function createMockVona(rootDir: string, layerConfig: LayerConfig): Vona {
   const hooks = createHooks<VonaHooks>()
