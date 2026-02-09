@@ -20,7 +20,7 @@
 示例：
 
 ```ts
-import { defineModule, addLayer, useVona } from '@vona-js/kit'
+import { addLayer, defineModule, useVona } from '@vona-js/kit'
 ```
 
 ```ts

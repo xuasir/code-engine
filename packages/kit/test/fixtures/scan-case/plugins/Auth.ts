@@ -1,1 +1,1 @@
-export default function auth() {}
+export default function auth(): void {}

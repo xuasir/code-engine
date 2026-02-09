@@ -115,5 +115,4 @@ describe('schema types', () => {
       vona: Vona,
     ) => Promise<void> | void>()
   })
-
 })

@@ -1,1 +1,3 @@
-export function useForm() { return true }
+export function useForm(): boolean {
+  return true
+}

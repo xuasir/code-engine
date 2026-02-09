@@ -1,1 +1,3 @@
-export function getOrg() { return 'o' }
+export function getOrg(): string {
+  return 'o'
+}

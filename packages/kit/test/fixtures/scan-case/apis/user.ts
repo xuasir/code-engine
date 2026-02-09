@@ -1,1 +1,3 @@
-export function getUser() { return 'u' }
+export function getUser(): string {
+  return 'u'
+}

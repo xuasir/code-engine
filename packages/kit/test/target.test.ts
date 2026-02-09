@@ -2,9 +2,9 @@ import type { LayerConfig, LayerDef, OVFSMutation, ResourceScanConfig, Vona } fr
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createLayerRuntime } from '../src/layer/runtime'
-import { createLayerRegistry } from '../src/layer/registry'
 import { closeLayerRegistration, createUserSrcLayer, registerLayer } from '../src/layer/register'
+import { createLayerRegistry } from '../src/layer/registry'
+import { createLayerRuntime } from '../src/layer/runtime'
 import { createAsset, scanLayer } from '../src/layer/scanner'
 import { createOVFS } from '../src/ovfs/ovfs'
 

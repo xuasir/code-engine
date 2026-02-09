@@ -1,1 +1,1 @@
-export default function sso() {}
+export default function sso(): void {}

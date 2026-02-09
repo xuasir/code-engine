@@ -1,1 +1,3 @@
-export function validateEmail() { return true }
+export function validateEmail(): boolean {
+  return true
+}

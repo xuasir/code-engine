@@ -1,1 +1,3 @@
-export function useCounter() { return 1 }
+export function useCounter(): number {
+  return 1
+}

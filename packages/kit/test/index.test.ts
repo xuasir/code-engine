@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import * as internal from '../src/internal'
 import * as kit from '../src'
+import * as internal from '../src/internal'
 
 describe('kit exports', () => {
   it('根入口仅暴露 module API', () => {
