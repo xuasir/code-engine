@@ -1,4 +1,4 @@
-import type { LayerAsset, LayerConfig, LayerDef, LayerRegistry, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
+import type { GenerateConfig, LayerAsset, LayerConfig, LayerDef, LayerRegistry, OVFS, OVFSResourceChange, Vona, VonaHooks } from '../src/types'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 describe('schema types', () => {
@@ -28,6 +28,24 @@ describe('schema types', () => {
     }
     expect(config.remote?.cacheDir).toBe('.vona/layers')
     expect(config.remote?.preferCache).toBe(true)
+  })
+
+  it('generate config should include report controls', () => {
+    const config: GenerateConfig = {
+      enabled: true,
+      outputDir: '.vona',
+      mode: 'disk',
+      debounceMs: 80,
+      clean: false,
+      cacheFile: '.cache/generate-state.json',
+      writeConcurrency: 8,
+      report: {
+        enabled: true,
+        file: '.cache/generate-report.json',
+      },
+    }
+    expect(config.mode).toBe('disk')
+    expect(config.report.enabled).toBe(true)
   })
 
   it('layer asset should use key and route metadata', () => {

@@ -4,7 +4,14 @@
     "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "paths": {},
+    "paths": {
+      "@vona-js/kit": ["./packages/kit/src/index.ts"],
+      "@vona-js/kit/internal": ["./packages/kit/src/internal.ts"],
+      "@vona-js/plugin-vue": ["./packages/vue/src/index.ts"],
+      "@vona-js/schema": ["./packages/schema/src/index.ts"],
+      "@vona-js/utils": ["./packages/utils/src/index.ts"],
+      "vona-js": ["./packages/vona/src/index.ts"]
+    },
     "resolveJsonModule": true,
     "strict": true,
     "strictNullChecks": true,

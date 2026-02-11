@@ -1,4 +1,11 @@
 export { getVonaCtx, runWithVonaContext, setVonaCtx, tryUseVona, useVona } from './context'
+export {
+  clearArtifactsRegistry,
+  createArtifactsBuilder,
+  createArtifactsRuntime,
+  SlotPresets,
+  snapshotArtifactsRegistry,
+} from './generator'
 export { createDynamicLayer, createLayer, createStaticLayer, type Layer, type LayerMutation, type LayerType } from './layer/layer'
 export { closeLayerRegistration, createUserSrcLayer, registerLayer } from './layer/register'
 export type { LayerRegistry } from './layer/registry'

@@ -1,4 +1,8 @@
 export { tryUseVona, useVona } from './context'
+export {
+  createArtifactsBuilder,
+  SlotPresets,
+} from './generator'
 export { addLayer, addLayers } from './layer/extend'
 export { useLogger } from './logger'
 export { defineModule } from './module/define'
